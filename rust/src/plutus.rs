@@ -196,6 +196,9 @@ impl ScriptIntegrityData {
     pub fn get(&self, index: usize) -> Int {
         self.0.iter().map(|v| v.clone()).collect::<Vec<_>>()[index]
     }
+}
+
+impl ScriptIntegrityData {
     const SET_TAG: u64 = 258;
 }
 
