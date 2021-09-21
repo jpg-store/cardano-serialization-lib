@@ -150,6 +150,57 @@ impl Costmdls {
 
 #[wasm_bindgen]
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct LanguageViews(std::collections::BTreeMap<Language, ScriptIntegrityData>);
+
+to_from_bytes!(LanguageViews);
+
+#[wasm_bindgen]
+impl LanguageViews {
+    pub fn new() -> Self {
+        Self(std::collections::BTreeMap::new())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn insert(&mut self, key: &Language, value: &ScriptIntegrityData) -> Option<ScriptIntegrityData> {
+        self.0.insert(key.clone(), value.clone())
+    }
+
+    pub fn get(&self, key: &Language) -> Option<ScriptIntegrityData> {
+        self.0.get(key).map(|v| v.clone())
+    }
+
+    pub fn keys(&self) -> Languages {
+        Languages(self.0.iter().map(|(k, _v)| k.clone()).collect::<Vec<_>>())
+    }
+}
+
+#[wasm_bindgen]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct ScriptIntegrityData(std::collections::BTreeSet<Int>);
+
+to_from_bytes!(ScriptIntegrityData);
+
+#[wasm_bindgen]
+impl ScriptIntegrityData {
+    pub fn new() -> Self {
+        Self(std::collections::BTreeSet::new())
+    }
+
+    pub fn insert(&mut self, value : &Int) {
+        self.0.insert(value.clone());
+    }
+
+    pub fn get(&self, index: usize) -> Int {
+        self.0.iter().map(|v| v.clone()).collect::<Vec<_>>()[index]
+    }
+    const SET_TAG: u64 = 258;
+}
+
+#[wasm_bindgen]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct ExUnitPrices {
     mem_price: SubCoin,
     step_price: SubCoin,
@@ -695,6 +746,76 @@ impl Deserialize for Costmdls {
             Ok(())
         })().map_err(|e| e.annotate("Costmdls"))?;
         Ok(Self(table))
+    }
+}
+
+impl cbor_event::se::Serialize for LanguageViews {
+    fn serialize<'se, W: Write>(&self, serializer: &'se mut Serializer<W>) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_map(cbor_event::Len::Len(self.0.len() as u64))?;
+        for (key, value) in &self.0 {
+            key.serialize(serializer)?;
+            value.serialize(serializer)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for LanguageViews {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        let mut table = std::collections::BTreeMap::new();
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.map()?;
+            while match len { cbor_event::Len::Len(n) => table.len() < n as usize, cbor_event::Len::Indefinite => true, } {
+                if raw.cbor_type()? == CBORType::Special {
+                    assert_eq!(raw.special()?, CBORSpecial::Break);
+                    break;
+                }
+                let key = Language::deserialize(raw)?;
+                let value = ScriptIntegrityData::deserialize(raw)?;
+                if table.insert(key.clone(), value).is_some() {
+                    return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from("some complicated/unsupported type"))).into());
+                }
+            }
+            Ok(())
+        })().map_err(|e| e.annotate("LanguageViews"))?;
+        Ok(Self(table))
+    }
+}
+
+impl cbor_event::se::Serialize for ScriptIntegrityData {
+    fn serialize<'se, W: Write>(&self, serializer: &'se mut Serializer<W>) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag(Self::SET_TAG)?;
+        serializer.write_array(cbor_event::Len::Len(self.0.len() as u64))?;
+        for value in &self.0 {
+            value.serialize(serializer)?;
+        }
+        Ok(serializer)
+    }
+}
+
+impl Deserialize for ScriptIntegrityData {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let set = match raw.tag()? {
+                Self::SET_TAG => {
+                    let mut set = std::collections::BTreeSet::new();
+                    let len = raw.array()?;
+                    while match len { cbor_event::Len::Len(n) => set.len() < n as usize, cbor_event::Len::Indefinite => true, } {
+                        if raw.cbor_type()? == CBORType::Special {
+                            assert_eq!(raw.special()?, CBORSpecial::Break);
+                            break;
+                        }
+                        set.insert(Int::deserialize(raw)?);
+                    }
+                    set
+                },
+                invalid_tag => return Err(DeserializeFailure::TagMismatch{
+                    found: invalid_tag,
+                    expected: Self::SET_TAG,
+                }.into()),
+        };
+            Ok(Self(set.try_into().unwrap()))
+        })().map_err(|e| e.annotate("ScriptIntegrityData"))
     }
 }
 
