@@ -3309,7 +3309,13 @@ impl Deserialize for AssetNames {
 impl cbor_event::se::Serialize for Assets {
     fn serialize<'se, W: Write>(&self, serializer: &'se mut Serializer<W>) -> cbor_event::Result<&'se mut Serializer<W>> {
         serializer.write_map(cbor_event::Len::Len(self.0.len() as u64))?;
-        for (key, value) in &self.0 {
+        //canonical encoding
+        let mut key_assets: Vec<(AssetName, BigNum)> = self.0.iter().map(|(k, _v)| (k.clone(), _v.clone())).collect();
+        key_assets.sort_by(|lhs, rhs| match lhs.0.0.len().cmp(&rhs.0.0.len()) {
+            std::cmp::Ordering::Equal => lhs.0.0.cmp(&rhs.0.0),
+            len_order => len_order,
+        });
+        for (key, value) in key_assets.iter() {
             key.serialize(serializer)?;
             value.serialize(serializer)?;
         }
@@ -3342,7 +3348,13 @@ impl Deserialize for Assets {
 impl cbor_event::se::Serialize for MultiAsset {
     fn serialize<'se, W: Write>(&self, serializer: &'se mut Serializer<W>) -> cbor_event::Result<&'se mut Serializer<W>> {
         serializer.write_map(cbor_event::Len::Len(self.0.len() as u64))?;
-        for (key, value) in &self.0 {
+        //canonical encoding
+        let mut keys_multiasset: Vec<(ScriptHash, Assets)> = self.0.iter().map(|(k, _v)| (k.clone(), _v.clone())).collect();
+        keys_multiasset.sort_by(|lhs, rhs| match lhs.0.0.len().cmp(&rhs.0.0.len()) {
+            std::cmp::Ordering::Equal => lhs.0.0.cmp(&rhs.0.0),
+            len_order => len_order,
+        });
+        for (key, value) in keys_multiasset.iter() {
             key.serialize(serializer)?;
             value.serialize(serializer)?;
         }
@@ -3375,7 +3387,13 @@ impl Deserialize for MultiAsset {
 impl cbor_event::se::Serialize for MintAssets {
     fn serialize<'se, W: Write>(&self, serializer: &'se mut Serializer<W>) -> cbor_event::Result<&'se mut Serializer<W>> {
         serializer.write_map(cbor_event::Len::Len(self.0.len() as u64))?;
-        for (key, value) in &self.0 {
+        //canonical encoding
+        let mut key_mintassets: Vec<(AssetName, Int)> = self.0.iter().map(|(k, _v)| (k.clone(), _v.clone())).collect();
+        key_mintassets.sort_by(|lhs, rhs| match lhs.0.0.len().cmp(&rhs.0.0.len()) {
+            std::cmp::Ordering::Equal => lhs.0.0.cmp(&rhs.0.0),
+            len_order => len_order,
+        });
+        for (key, value) in key_mintassets.iter() {
             key.serialize(serializer)?;
             value.serialize(serializer)?;
         }
