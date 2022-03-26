@@ -6,6 +6,20 @@
  */
 
 /**
+ * @param {Transaction} tx
+ * @param {LinearFee} linear_fee
+ * @param {number} mem_price
+ * @param {number} step_price
+ * @returns {BigNum}
+ */
+declare export function min_fee(
+  tx: Transaction,
+  linear_fee: LinearFee,
+  mem_price: number,
+  step_price: number
+): BigNum;
+
+/**
  * @param {TransactionHash} tx_body_hash
  * @param {ByronAddress} addr
  * @param {LegacyDaedalusPrivateKey} key
@@ -164,13 +178,6 @@ declare export function decode_metadatum_to_json_str(
   metadatum: TransactionMetadatum,
   schema: number
 ): string;
-
-/**
- * @param {Transaction} tx
- * @param {LinearFee} linear_fee
- * @returns {BigNum}
- */
-declare export function min_fee(tx: Transaction, linear_fee: LinearFee): BigNum;
 
 /**
  * @param {string} password
@@ -717,6 +724,12 @@ declare export class BigNum {
    * @returns {BigNum}
    */
   checked_sub(other: BigNum): BigNum;
+
+  /**
+   * @param {BigNum} other
+   * @returns {BigNum}
+   */
+  checked_div(other: BigNum): BigNum;
 
   /**
    * returns 0 if it would otherwise underflow
@@ -5290,6 +5303,42 @@ declare export class TransactionBuilder {
   ): void;
 
   /**
+   * @param {TransactionInputs} collateral
+   */
+  set_collateral(collateral: TransactionInputs): void;
+
+  /**
+   * @param {PlutusList} plutus_data
+   */
+  set_plutus_data(plutus_data: PlutusList): void;
+
+  /**
+   * @param {Redeemers} redeemers
+   */
+  set_redeemers(redeemers: Redeemers): void;
+
+  /**
+   * @param {PlutusScripts} plutus_scripts
+   */
+  set_plutus_scripts(plutus_scripts: PlutusScripts): void;
+
+  /**
+   * @param {Ed25519KeyHashes} required_signers
+   */
+  set_required_signers(required_signers: Ed25519KeyHashes): void;
+
+  /**
+   * @param {TransactionInput} input
+   * @returns {number}
+   */
+  index_of_input(input: TransactionInput): number;
+
+  /**
+   * @param {Address} address
+   */
+  add_address_witness(address: Address): void;
+
+  /**
    * @param {TransactionBuilderConfig} cfg
    * @returns {TransactionBuilder}
    */
@@ -5372,6 +5421,11 @@ declare export class TransactionBuilder {
    * @returns {BigNum}
    */
   min_fee(): BigNum;
+
+  /**
+   * @returns {Redeemers}
+   */
+  redeemers(): Redeemers;
 }
 /**
  */
@@ -5425,6 +5479,24 @@ declare export class TransactionBuilderConfigBuilder {
    * @returns {TransactionBuilderConfigBuilder}
    */
   max_tx_size(max_tx_size: number): TransactionBuilderConfigBuilder;
+
+  /**
+   * @param {number} price_mem
+   * @returns {TransactionBuilderConfigBuilder}
+   */
+  price_mem(price_mem: number): TransactionBuilderConfigBuilder;
+
+  /**
+   * @param {number} price_step
+   * @returns {TransactionBuilderConfigBuilder}
+   */
+  price_step(price_step: number): TransactionBuilderConfigBuilder;
+
+  /**
+   * @param {Costmdls} costmdls
+   * @returns {TransactionBuilderConfigBuilder}
+   */
+  costmdls(costmdls: Costmdls): TransactionBuilderConfigBuilder;
 
   /**
    * @param {boolean} prefer_pure_change
