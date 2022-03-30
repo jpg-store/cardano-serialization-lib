@@ -103,14 +103,15 @@ fn fake_full_tx(
             Some(result)
         }
     };
-    let script_keys: Option<NativeScripts> = match tx_builder.input_types.scripts.len() {
-        0 => None,
-        _x => {
-            // TODO: figure out how to populate fake witnesses for these
-            // return Err(JsError::from_str("Script inputs not supported yet"))
-            None
-        }
-    };
+    // let script_keys: Option<NativeScripts> = match tx_builder.input_types.scripts.len() {
+    //     0 => None,
+    //     _x => {
+    //         // TODO: figure out how to populate fake witnesses for these
+    //         // return Err(JsError::from_str("Script inputs not supported yet"))
+    //         None
+    //     }
+    // };
+    let script_keys: Option<NativeScripts> = tx_builder.native_scripts.clone();
     let bootstrap_keys = match tx_builder.input_types.bootstraps.len() {
         0 => None,
         _x => {
@@ -393,6 +394,7 @@ pub struct TransactionBuilder {
     plutus_data: Option<PlutusList>,
     redeemers: Option<Redeemers>,
     plutus_scripts: Option<PlutusScripts>,
+    native_scripts: Option<NativeScripts>,
 }
 
 #[wasm_bindgen]
@@ -1135,6 +1137,10 @@ impl TransactionBuilder {
         }
     }
 
+    pub fn set_native_scripts(&mut self, native_scripts: &NativeScripts) {
+        self.native_scripts = Some(native_scripts.clone())
+    }
+
     pub fn index_of_input(&self, input: &TransactionInput) -> usize {
         let mut inputs = self
             .inputs
@@ -1229,6 +1235,7 @@ impl TransactionBuilder {
             plutus_data: None,
             redeemers: None,
             plutus_scripts: None,
+            native_scripts: None,
         }
     }
 
