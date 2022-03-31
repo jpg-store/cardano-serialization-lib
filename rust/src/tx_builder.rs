@@ -12,9 +12,12 @@ fn witness_keys_for_cert(cert_enum: &Certificate, keys: &mut BTreeSet<Ed25519Key
         CertificateEnum::StakeDeregistration(cert) => {
             keys.insert(cert.stake_credential().to_keyhash().unwrap());
         }
-        CertificateEnum::StakeDelegation(cert) => {
-            keys.insert(cert.stake_credential().to_keyhash().unwrap());
-        }
+        CertificateEnum::StakeDelegation(cert) => match cert.stake_credential().kind() {
+            StakeCredKind::Script => {}
+            StakeCredKind::Key => {
+                keys.insert(cert.stake_credential().to_keyhash().unwrap());
+            }
+        },
         CertificateEnum::PoolRegistration(cert) => {
             for owner in &cert.pool_params().pool_owners().0 {
                 keys.insert(owner.clone());
