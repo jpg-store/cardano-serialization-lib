@@ -721,12 +721,13 @@ impl TransactionBuilder {
         hash: &ScriptHash,
         input: &TransactionInput,
         amount: &Value,
-        script: &ScriptWitness,
+        script_witness: &ScriptWitness,
     ) {
-        match &script.0 {
-            ScriptWitnessEnum::NativeWitness(native_script) => {
+        match &script_witness.kind() {
+            ScriptWitnessKind::NativeWitness => {
+                let native_script = script_witness.as_native_witness().unwrap();
                 if !self.input_types.scripts.contains(hash) {
-                    self.add_native_script(native_script);
+                    self.add_native_script(&native_script);
                     self.input_types.scripts.insert(hash.clone());
                 }
 
@@ -736,12 +737,13 @@ impl TransactionBuilder {
                     redeemer: None,
                 });
             }
-            ScriptWitnessEnum::PlutusWitness(plutus_witness) => {
+            ScriptWitnessKind::PlutusWitness => {
+                let plutus_witness = script_witness.as_plutus_witness().unwrap();
                 if !self.input_types.scripts.contains(hash) {
-                    self.add_plutus_script(&plutus_witness.script);
+                    self.add_plutus_script(&plutus_witness.script());
                     self.input_types.scripts.insert(hash.clone());
                 }
-                self.add_plutus_data(&plutus_witness.plutus_data.clone().unwrap());
+                self.add_plutus_data(&plutus_witness.plutus_data().clone().unwrap());
 
                 self.inputs.push(TxBuilderInput {
                     input: input.clone(),
@@ -749,7 +751,7 @@ impl TransactionBuilder {
                     redeemer: Some(Redeemer::new(
                         &RedeemerTag::new_spend(),
                         &to_bignum(0), // will point to correct input when finalizing txBuilder
-                        &plutus_witness.redeemer,
+                        &plutus_witness.redeemer(),
                         &ExUnits::new(&to_bignum(0), &to_bignum(0)), // correct ex units calculated at the end
                     )),
                 });
@@ -1070,23 +1072,25 @@ impl TransactionBuilder {
         mint_assets: &MintAssets,
         script_witness: &ScriptWitness,
     ) {
-        let redeemer = match &script_witness.0 {
-            ScriptWitnessEnum::NativeWitness(native_script) => {
+        let redeemer = match &script_witness.kind() {
+            ScriptWitnessKind::NativeWitness => {
+                let native_script = script_witness.as_native_witness().unwrap();
                 if !self.input_types.scripts.contains(&policy_id) {
-                    self.add_native_script(native_script);
+                    self.add_native_script(&native_script);
                     self.input_types.scripts.insert(policy_id.clone());
                 }
                 None
             }
-            ScriptWitnessEnum::PlutusWitness(plutus_witness) => {
+            ScriptWitnessKind::PlutusWitness => {
+                let plutus_witness = script_witness.as_plutus_witness().unwrap();
                 if !self.input_types.scripts.contains(&policy_id) {
-                    self.add_plutus_script(&plutus_witness.script);
+                    self.add_plutus_script(&plutus_witness.script());
                     self.input_types.scripts.insert(policy_id.clone());
                 }
                 Some(Redeemer::new(
                     &RedeemerTag::new_spend(),
                     &to_bignum(0), // will point to correct input when finalizing txBuilder
-                    &plutus_witness.redeemer,
+                    &plutus_witness.redeemer(),
                     &ExUnits::new(&to_bignum(0), &to_bignum(0)), // correct ex units calculated at the end
                 ))
             }
@@ -1263,13 +1267,13 @@ impl TransactionBuilder {
 
     fn mint_array_to_mint(&self) -> Option<Mint> {
         match &self.mint {
-            Some(txBuilderMint) => {
-                let mut collectedMint = Mint::new();
+            Some(tx_builder_mint) => {
+                let mut collected_mint = Mint::new();
 
-                for m in txBuilderMint.iter() {
-                    collectedMint.insert(&m.policy_id, &m.mint_assets);
+                for m in tx_builder_mint.iter() {
+                    collected_mint.insert(&m.policy_id, &m.mint_assets);
                 }
-                Some(collectedMint)
+                Some(collected_mint)
             }
             None => None,
         }

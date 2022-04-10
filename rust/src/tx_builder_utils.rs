@@ -33,8 +33,8 @@ pub struct ExUnitResult {
     Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize, JsonSchema,
 )]
 pub struct Blockfrost {
-    pub url: String,
-    pub project_id: String,
+    url: String,
+    project_id: String,
 }
 
 #[wasm_bindgen]
@@ -44,6 +44,12 @@ impl Blockfrost {
             url: url.clone(),
             project_id: project_id.clone(),
         }
+    }
+    pub fn url(&self) -> String {
+        self.url.clone()
+    }
+    pub fn project_id(&self) -> String {
+        self.project_id.clone()
     }
 }
 
@@ -55,7 +61,9 @@ pub async fn get_ex_units(tx: Transaction, bf: &Blockfrost) -> Result<Redeemers,
 #[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
 pub async fn get_ex_units(tx: Transaction, bf: &Blockfrost) -> Result<Redeemers, JsError> {
     if bf.url.is_empty() || bf.project_id.is_empty() {
-        return JsError::from_str("Blockfrost not set. Can't calculate ex units");
+        return Err(JsError::from_str(
+            "Blockfrost not set. Can't calculate ex units",
+        ));
     }
 
     let mut opts = RequestInit::new();
@@ -63,11 +71,11 @@ pub async fn get_ex_units(tx: Transaction, bf: &Blockfrost) -> Result<Redeemers,
     let tx_hex = hex::encode(tx.to_bytes());
     opts.body(Some(&JsValue::from(tx_hex)));
 
-    let url = bf.url;
+    let url = &bf.url;
 
     let request = Request::new_with_str_and_init(&url, &opts)?;
     request.headers().set("Content-Type", "application/cbor")?;
-    request.headers().set("project_id", bf.project_id)?;
+    request.headers().set("project_id", &bf.project_id)?;
 
     let window = web_sys::window().unwrap();
     let resp_value = JsFuture::from(window.fetch_with_request(&request)).await?;
@@ -135,9 +143,9 @@ pub enum ScriptWitnessEnum {
     Clone, Debug, Eq, PartialEq, Ord, PartialOrd, serde::Serialize, serde::Deserialize, JsonSchema,
 )]
 pub struct PlutusWitness {
-    pub plutus_data: Option<PlutusData>,
-    pub redeemer: PlutusData,
-    pub script: PlutusScript,
+    plutus_data: Option<PlutusData>,
+    redeemer: PlutusData,
+    script: PlutusScript,
 }
 
 #[wasm_bindgen]
@@ -149,13 +157,23 @@ impl PlutusWitness {
             script: script.clone(),
         }
     }
+
+    pub fn plutus_data(&self) -> Option<PlutusData> {
+        self.plutus_data.clone()
+    }
+    pub fn redeemer(&self) -> PlutusData {
+        self.redeemer.clone()
+    }
+    pub fn script(&self) -> PlutusScript {
+        self.script.clone()
+    }
 }
 
 #[wasm_bindgen]
 #[derive(
     Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize, JsonSchema,
 )]
-pub struct ScriptWitness(pub ScriptWitnessEnum);
+pub struct ScriptWitness(ScriptWitnessEnum);
 
 to_from_json!(ScriptWitness);
 
