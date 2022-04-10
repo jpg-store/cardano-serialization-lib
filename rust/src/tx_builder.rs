@@ -3,19 +3,29 @@ use super::output_builder::TransactionOutputAmountBuilder;
 use super::utils;
 use super::*;
 use crate::tx_builder_utils::*;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 // comes from witsVKeyNeeded in the Ledger spec
 fn witness_keys_for_cert(cert_enum: &Certificate, keys: &mut BTreeSet<Ed25519KeyHash>) {
     match &cert_enum.0 {
         // stake key registrations do not require a witness
         CertificateEnum::StakeRegistration(_cert) => {}
-        CertificateEnum::StakeDeregistration(cert) => {
-            keys.insert(cert.stake_credential().to_keyhash().unwrap());
-        }
-        CertificateEnum::StakeDelegation(cert) => {
-            keys.insert(cert.stake_credential().to_keyhash().unwrap());
-        }
+        CertificateEnum::StakeDeregistration(cert) => match cert.stake_credential().kind() {
+            StakeCredKind::Script => {
+                //TODO
+            }
+            StakeCredKind::Key => {
+                keys.insert(cert.stake_credential().to_keyhash().unwrap());
+            }
+        },
+        CertificateEnum::StakeDelegation(cert) => match cert.stake_credential().kind() {
+            StakeCredKind::Script => {
+                //TODO
+            }
+            StakeCredKind::Key => {
+                keys.insert(cert.stake_credential().to_keyhash().unwrap());
+            }
+        },
         CertificateEnum::PoolRegistration(cert) => {
             for owner in &cert.pool_params().pool_owners().0 {
                 keys.insert(owner.clone());
@@ -1222,8 +1232,8 @@ impl TransactionBuilder {
         }
     }
 
-    fn set_redeemers(&mut self, redeemers: Redeemers) {
-        self.redeemers = Some(redeemers)
+    fn set_redeemers(&mut self, redeemers: &Redeemers) {
+        self.redeemers = Some(redeemers.clone())
     }
 
     pub fn collateral(&self) -> Option<TransactionInputs> {
@@ -1674,8 +1684,6 @@ impl TransactionBuilder {
             total_outputs.add(&change_output);
         }
 
-        self.redeemers = self.collect_redeemers();
-
         let mint = self.mint_array_to_mint();
 
         let built = TransactionBody {
@@ -1740,7 +1748,7 @@ impl TransactionBuilder {
     /// Returns object the body of the new transaction
     /// Auxiliary data itself is not included
     /// You can use `get_auxiliary_data` or `build_tx`
-    pub fn build(&mut self) -> Result<TransactionBody, JsError> {
+    fn build(&mut self) -> Result<TransactionBody, JsError> {
         let (body, full_tx_size) = self.build_and_size()?;
         if full_tx_size > self.config.max_tx_size as usize {
             Err(JsError::from_str(&format!(
@@ -1794,11 +1802,12 @@ impl TransactionBuilder {
     /// NOTE: is_valid set to true
     pub async fn construct(self) -> Result<Transaction, JsError> {
         let this = &mut self.clone();
+        this.redeemers = this.collect_redeemers();
         let (body, full_tx_size) = this.build_and_size()?;
-        if full_tx_size > self.config.max_tx_size as usize {
+        if full_tx_size > this.config.max_tx_size as usize {
             Err(JsError::from_str(&format!(
                 "Maximum transaction size of {} exceeded. Found: {}",
-                self.config.max_tx_size, full_tx_size
+                this.config.max_tx_size, full_tx_size
             )))
         } else {
             let full_tx = Transaction {
@@ -1808,17 +1817,17 @@ impl TransactionBuilder {
                 auxiliary_data: this.auxiliary_data.clone(),
             };
 
-            if let Some(_) = &full_tx.witness_set.redeemers {
-                let old_fee = full_tx.body.fee.clone();
-
-                let redeemers = get_ex_units(full_tx, &self.config.blockfrost).await?;
-                this.set_redeemers(redeemers);
+            if let Some(_) = &this.redeemers {
+                let updated_redeemers =
+                    get_ex_units(full_tx.clone(), &this.config.blockfrost).await?;
+                this.redeemers = Some(updated_redeemers);
 
                 //set new fee and and subract remaining amount from a change output
+                let old_fee = full_tx.body.fee.clone();
                 let new_fee = min_fee(this)?;
                 this.set_fee(&new_fee);
                 let amount_to_subtract = new_fee.checked_sub(&old_fee)?;
-                //get index of a change output which has sufficient balance
+                // //get index of a change output which has sufficient balance
                 let index = this
                     .change_outputs
                     .0
@@ -1828,7 +1837,7 @@ impl TransactionBuilder {
                             .amount
                             .coin
                             .checked_sub(&amount_to_subtract)
-                            .unwrap()
+                            .unwrap_or(to_bignum(0))
                             .compare(
                                 &min_ada_required(
                                     &output.amount(),
@@ -1894,6 +1903,7 @@ impl TransactionBuilder {
     /// NOTE: witness_set will contain all mint_scripts if any been added or set
     /// NOTE: is_valid set to true
     pub fn build_tx(&mut self) -> Result<Transaction, JsError> {
+        self.redeemers = self.collect_redeemers();
         Ok(Transaction {
             body: self.build()?,
             witness_set: self.get_witness_set(),
