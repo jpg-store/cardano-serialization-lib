@@ -1,9 +1,16 @@
-use cbor_event::{self, de::Deserializer, se::{Serialize, Serializer}};
+use cbor_event::{
+    self,
+    de::Deserializer,
+    se::{Serialize, Serializer},
+};
 use hex::FromHex;
-use serde_json;
-use std::{collections::HashMap, io::{BufRead, Seek, Write}};
 use itertools::Itertools;
-use std::ops::{Rem, Div, Sub};
+use serde_json;
+use std::ops::{Div, Rem, Sub};
+use std::{
+    collections::HashMap,
+    io::{BufRead, Seek, Write},
+};
 
 use super::*;
 use crate::error::{DeserializeError, DeserializeFailure};
@@ -58,7 +65,7 @@ macro_rules! to_bytes {
                 buf.finalize()
             }
         }
-    }
+    };
 }
 
 #[macro_export]
@@ -66,7 +73,7 @@ macro_rules! to_from_bytes {
     ($name:ident) => {
         to_bytes!($name);
         from_bytes!($name);
-    }
+    };
 }
 
 #[macro_export]
@@ -90,14 +97,14 @@ macro_rules! to_from_json {
                     .map_err(|e| JsError::from_str(&format!("from_json: {}", e)))
             }
         }
-    }
+    };
 }
 
 #[wasm_bindgen]
 #[derive(Clone, Debug)]
 pub struct TransactionUnspentOutput {
     pub(crate) input: TransactionInput,
-    pub(crate) output: TransactionOutput
+    pub(crate) output: TransactionOutput,
 }
 
 to_from_bytes!(TransactionUnspentOutput);
@@ -107,7 +114,7 @@ impl TransactionUnspentOutput {
     pub fn new(input: &TransactionInput, output: &TransactionOutput) -> TransactionUnspentOutput {
         Self {
             input: input.clone(),
-            output: output.clone()
+            output: output.clone(),
         }
     }
 
@@ -121,7 +128,10 @@ impl TransactionUnspentOutput {
 }
 
 impl cbor_event::se::Serialize for TransactionUnspentOutput {
-    fn serialize<'se, W: Write>(&self, serializer: &'se mut Serializer<W>) -> cbor_event::Result<&'se mut Serializer<W>> {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
         serializer.write_array(cbor_event::Len::Len(2))?;
         self.input.serialize(serializer)?;
         self.output.serialize(serializer)
@@ -136,29 +146,41 @@ impl Deserialize for TransactionUnspentOutput {
                     let len = raw.array()?;
                     let input = (|| -> Result<_, DeserializeError> {
                         Ok(TransactionInput::deserialize(raw)?)
-                    })().map_err(|e| e.annotate("input"))?;
+                    })()
+                    .map_err(|e| e.annotate("input"))?;
                     let output = (|| -> Result<_, DeserializeError> {
                         Ok(TransactionOutput::deserialize(raw)?)
-                    })().map_err(|e| e.annotate("output"))?;
-                    let ret = Ok(Self {
-                        input,
-                        output
-                    });
+                    })()
+                    .map_err(|e| e.annotate("output"))?;
+                    let ret = Ok(Self { input, output });
                     match len {
                         cbor_event::Len::Len(n) => match n {
-                            2 => /* it's ok */(),
-                            n => return Err(DeserializeFailure::DefiniteLenMismatch(n, Some(2)).into()),
+                            2 =>
+                            /* it's ok */
+                            {
+                                ()
+                            }
+                            n => {
+                                return Err(
+                                    DeserializeFailure::DefiniteLenMismatch(n, Some(2)).into()
+                                )
+                            }
                         },
                         cbor_event::Len::Indefinite => match raw.special()? {
-                            CBORSpecial::Break => /* it's ok */(),
+                            CBORSpecial::Break =>
+                            /* it's ok */
+                            {
+                                ()
+                            }
                             _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
                         },
                     }
                     ret
-                },
+                }
                 _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
-        })().map_err(|e| e.annotate("TransactionUnspentOutput"))
+        })()
+        .map_err(|e| e.annotate("TransactionUnspentOutput"))
     }
 }
 
@@ -187,7 +209,7 @@ impl TransactionUnspentOutputs {
 
 // Generic u64 wrapper for platforms that don't support u64 or BigInt/etc
 // This is an unsigned type - no negative numbers.
-// Can be converted to/from plain rust 
+// Can be converted to/from plain rust
 #[wasm_bindgen]
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct BigNum(u64);
@@ -198,7 +220,8 @@ to_from_bytes!(BigNum);
 impl BigNum {
     // Create a BigNum from a standard rust string representation
     pub fn from_str(string: &str) -> Result<BigNum, JsError> {
-        string.parse::<u64>()
+        string
+            .parse::<u64>()
             .map_err(|e| JsError::from_str(&format! {"{:?}", e}))
             .map(BigNum)
     }
@@ -267,39 +290,57 @@ impl From<u64> for BigNum {
 }
 
 impl cbor_event::se::Serialize for BigNum {
-  fn serialize<'se, W: Write>(&self, serializer: &'se mut Serializer<W>) -> cbor_event::Result<&'se mut Serializer<W>> {
-      serializer.write_unsigned_integer(self.0)
-  }
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_unsigned_integer(self.0)
+    }
 }
 
 impl Deserialize for BigNum {
-  fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-      match raw.unsigned_integer() {
-          Ok(value) => Ok(Self(value)),
-          Err(e) => Err(DeserializeError::new("BigNum", DeserializeFailure::CBOR(e))),
-      }
-  }
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        match raw.unsigned_integer() {
+            Ok(value) => Ok(Self(value)),
+            Err(e) => Err(DeserializeError::new("BigNum", DeserializeFailure::CBOR(e))),
+        }
+    }
 }
 
 impl serde::Serialize for BigNum {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: serde::Serializer {
+    where
+        S: serde::Serializer,
+    {
         serializer.serialize_str(&self.to_str())
     }
 }
 
-impl <'de> serde::de::Deserialize<'de> for BigNum {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where
-    D: serde::de::Deserializer<'de> {
+impl<'de> serde::de::Deserialize<'de> for BigNum {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
         let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
-        Self::from_str(&s).map_err(|_e| serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &"string rep of a number"))
+        Self::from_str(&s).map_err(|_e| {
+            serde::de::Error::invalid_value(
+                serde::de::Unexpected::Str(&s),
+                &"string rep of a number",
+            )
+        })
     }
 }
 
 impl JsonSchema for BigNum {
-    fn schema_name() -> String { String::from("BigNum") }
-    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema { String::json_schema(gen) }
-    fn is_referenceable() -> bool { String::is_referenceable() }
+    fn schema_name() -> String {
+        String::from("BigNum")
+    }
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        String::json_schema(gen)
+    }
+    fn is_referenceable() -> bool {
+        String::is_referenceable()
+    }
 }
 
 // This is not idiomatic rust, we should favor the new From
@@ -315,10 +356,19 @@ pub fn from_bignum(val: &BigNum) -> u64 {
 pub type Coin = BigNum;
 
 #[wasm_bindgen]
-#[derive(Clone, Debug, Eq, /*Hash,*/ Ord, PartialEq, serde::Serialize, serde::Deserialize, JsonSchema)]
+#[derive(
+    Clone,
+    Debug,
+    Eq,
+    /*Hash,*/ Ord,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    JsonSchema,
+)]
 pub struct Value {
-    pub (crate) coin: Coin,
-    pub (crate) multiasset: Option<MultiAsset>,
+    pub(crate) coin: Coin,
+    pub(crate) multiasset: Option<MultiAsset>,
 }
 
 to_from_bytes!(Value);
@@ -327,7 +377,6 @@ to_from_json!(Value);
 
 #[wasm_bindgen]
 impl Value {
-
     pub fn new(coin: &Coin) -> Value {
         Self {
             coin: coin.clone(),
@@ -341,7 +390,7 @@ impl Value {
             false => Self {
                 coin: Coin::zero(),
                 multiasset: Some(multiasset.clone()),
-            }
+            },
         }
     }
 
@@ -350,7 +399,12 @@ impl Value {
     }
 
     pub fn is_zero(&self) -> bool {
-        self.coin.is_zero() && self.multiasset.as_ref().map(|m| m.len() == 0).unwrap_or(true)
+        self.coin.is_zero()
+            && self
+                .multiasset
+                .as_ref()
+                .map(|m| m.len() == 0)
+                .unwrap_or(true)
     }
 
     pub fn coin(&self) -> Coin {
@@ -403,30 +457,25 @@ impl Value {
                 }
 
                 Some(multiasset)
-            },
-            (None, None) => None, 
+            }
+            (None, None) => None,
             (Some(ma), None) => Some(ma.clone()),
             (None, Some(ma)) => Some(ma.clone()),
         };
 
-        Ok(Value {
-            coin, 
-            multiasset
-        })
+        Ok(Value { coin, multiasset })
     }
 
     pub fn checked_sub(&self, rhs_value: &Value) -> Result<Value, JsError> {
         let coin = self.coin.checked_sub(&rhs_value.coin)?;
-        let multiasset = match(&self.multiasset, &rhs_value.multiasset) {
-            (Some(lhs_ma), Some(rhs_ma)) => {
-                match lhs_ma.sub(rhs_ma).len() {
-                    0 => None,
-                    _ => Some(lhs_ma.sub(rhs_ma))
-                }
+        let multiasset = match (&self.multiasset, &rhs_value.multiasset) {
+            (Some(lhs_ma), Some(rhs_ma)) => match lhs_ma.sub(rhs_ma).len() {
+                0 => None,
+                _ => Some(lhs_ma.sub(rhs_ma)),
             },
             (Some(lhs_ma), None) => Some(lhs_ma.clone()),
             (None, Some(_rhs_ma)) => None,
-            (None, None) => None
+            (None, None) => None,
         };
 
         Ok(Value { coin, multiasset })
@@ -434,16 +483,14 @@ impl Value {
 
     pub fn clamped_sub(&self, rhs_value: &Value) -> Value {
         let coin = self.coin.clamped_sub(&rhs_value.coin);
-        let multiasset = match(&self.multiasset, &rhs_value.multiasset) {
-            (Some(lhs_ma), Some(rhs_ma)) => {
-                match lhs_ma.sub(rhs_ma).len() {
-                    0 => None,
-                    _ => Some(lhs_ma.sub(rhs_ma))
-                }
+        let multiasset = match (&self.multiasset, &rhs_value.multiasset) {
+            (Some(lhs_ma), Some(rhs_ma)) => match lhs_ma.sub(rhs_ma).len() {
+                0 => None,
+                _ => Some(lhs_ma.sub(rhs_ma)),
             },
             (Some(lhs_ma), None) => Some(lhs_ma.clone()),
             (None, Some(_rhs_ma)) => None,
-            (None, None) => None
+            (None, None) => None,
         };
 
         Value { coin, multiasset }
@@ -464,7 +511,10 @@ impl PartialOrd for Value {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         use std::cmp::Ordering::*;
 
-        fn compare_assets(lhs: &Option<MultiAsset>, rhs: &Option<MultiAsset>) -> Option<std::cmp::Ordering> {
+        fn compare_assets(
+            lhs: &Option<MultiAsset>,
+            rhs: &Option<MultiAsset>,
+        ) -> Option<std::cmp::Ordering> {
             match (lhs, rhs) {
                 (None, None) => Some(Equal),
                 (None, Some(rhs_assets)) => MultiAsset::new().partial_cmp(&rhs_assets),
@@ -473,31 +523,33 @@ impl PartialOrd for Value {
             }
         }
 
-        compare_assets(&self.multiasset(), &other.multiasset())
-            .and_then(|assets_match| {
-                let coin_cmp = self.coin.cmp(&other.coin);
+        compare_assets(&self.multiasset(), &other.multiasset()).and_then(|assets_match| {
+            let coin_cmp = self.coin.cmp(&other.coin);
 
-                match (coin_cmp, assets_match) {
-                    (coin_order, Equal) => Some(coin_order),
-                    (Equal, Less) => Some(Less),
-                    (Less, Less) => Some(Less),
-                    (Equal, Greater) => Some(Greater),
-                    (Greater, Greater) => Some(Greater),
-                    (_, _) => None
-                }
-            })
+            match (coin_cmp, assets_match) {
+                (coin_order, Equal) => Some(coin_order),
+                (Equal, Less) => Some(Less),
+                (Less, Less) => Some(Less),
+                (Equal, Greater) => Some(Greater),
+                (Greater, Greater) => Some(Greater),
+                (_, _) => None,
+            }
+        })
     }
 }
 
 impl cbor_event::se::Serialize for Value {
-    fn serialize<'se, W: Write>(&self, serializer: &'se mut Serializer<W>) -> cbor_event::Result<&'se mut Serializer<W>> {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
         match &self.multiasset {
             Some(multiasset) => {
                 serializer.write_array(cbor_event::Len::Len(2))?;
                 self.coin.serialize(serializer)?;
                 multiasset.serialize(serializer)
-            },
-            None => self.coin.serialize(serializer)
+            }
+            None => self.coin.serialize(serializer),
         }
     }
 }
@@ -509,38 +561,51 @@ impl Deserialize for Value {
                 cbor_event::Type::UnsignedInteger => Ok(Value::new(&Coin::deserialize(raw)?)),
                 cbor_event::Type::Array => {
                     let len = raw.array()?;
-                    let coin = (|| -> Result<_, DeserializeError> {
-                        Ok(Coin::deserialize(raw)?)
-                    })().map_err(|e| e.annotate("coin"))?;
-                    let multiasset = (|| -> Result<_, DeserializeError> {
-                        Ok(MultiAsset::deserialize(raw)?)
-                    })().map_err(|e| e.annotate("multiasset"))?;
+                    let coin =
+                        (|| -> Result<_, DeserializeError> { Ok(Coin::deserialize(raw)?) })()
+                            .map_err(|e| e.annotate("coin"))?;
+                    let multiasset =
+                        (|| -> Result<_, DeserializeError> { Ok(MultiAsset::deserialize(raw)?) })()
+                            .map_err(|e| e.annotate("multiasset"))?;
                     let ret = Ok(Self {
                         coin,
                         multiasset: Some(multiasset),
                     });
                     match len {
                         cbor_event::Len::Len(n) => match n {
-                            2 => /* it's ok */(),
-                            n => return Err(DeserializeFailure::DefiniteLenMismatch(n, Some(2)).into()),
+                            2 =>
+                            /* it's ok */
+                            {
+                                ()
+                            }
+                            n => {
+                                return Err(
+                                    DeserializeFailure::DefiniteLenMismatch(n, Some(2)).into()
+                                )
+                            }
                         },
                         cbor_event::Len::Indefinite => match raw.special()? {
-                            CBORSpecial::Break => /* it's ok */(),
+                            CBORSpecial::Break =>
+                            /* it's ok */
+                            {
+                                ()
+                            }
                             _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
                         },
                     }
                     ret
-                },
+                }
                 _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
-        })().map_err(|e| e.annotate("Value"))
+        })()
+        .map_err(|e| e.annotate("Value"))
     }
 }
 
 // CBOR has int = uint / nint
 #[wasm_bindgen]
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct Int(pub (crate) i128);
+pub struct Int(pub(crate) i128);
 
 to_from_bytes!(Int);
 
@@ -559,7 +624,7 @@ impl Int {
     }
 
     pub fn is_positive(&self) -> bool {
-        return self.0 >= 0
+        return self.0 >= 0;
     }
 
     /// BigNum can only contain unsigned u64 values
@@ -612,8 +677,7 @@ impl Int {
     /// JsError in case of out of boundary overflow
     pub fn as_i32_or_fail(&self) -> Result<i32, JsError> {
         use std::convert::TryFrom;
-        i32::try_from(self.0)
-            .map_err(|e| JsError::from_str(&format!("{}", e)))
+        i32::try_from(self.0).map_err(|e| JsError::from_str(&format!("{}", e)))
     }
 
     /// Returns string representation of the underlying i128 value directly.
@@ -624,17 +688,25 @@ impl Int {
 
     // Create an Int from a standard rust string representation
     pub fn from_str(string: &str) -> Result<Int, JsError> {
-        let x = string.parse::<i128>()
+        let x = string
+            .parse::<i128>()
             .map_err(|e| JsError::from_str(&format! {"{:?}", e}))?;
         if x.abs() > u64::MAX as i128 {
-            return Err(JsError::from_str(&format!("{} out of bounds. Value (without sign) must fit within 4 bytes limit of {}", x, u64::MAX)));
+            return Err(JsError::from_str(&format!(
+                "{} out of bounds. Value (without sign) must fit within 4 bytes limit of {}",
+                x,
+                u64::MAX
+            )));
         }
         Ok(Self(x))
     }
 }
 
 impl cbor_event::se::Serialize for Int {
-    fn serialize<'se, W: Write>(&self, serializer: &'se mut Serializer<W>) -> cbor_event::Result<&'se mut Serializer<W>> {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
         if self.0 < 0 {
             serializer.write_negative_integer(self.0 as i64)
         } else {
@@ -651,18 +723,22 @@ impl Deserialize for Int {
                 cbor_event::Type::NegativeInteger => Ok(Self(read_nint(raw)?)),
                 _ => Err(DeserializeFailure::NoVariantMatched.into()),
             }
-        })().map_err(|e| e.annotate("Int"))
+        })()
+        .map_err(|e| e.annotate("Int"))
     }
 }
 
-fn read_nint<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result <i128, DeserializeError> {
+fn read_nint<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<i128, DeserializeError> {
     let found = raw.cbor_type()?;
     if found != cbor_event::Type::NegativeInteger {
         return Err(cbor_event::Error::Expected(cbor_event::Type::NegativeInteger, found).into());
     }
     let (len, len_sz) = raw.cbor_len()?;
     match len {
-        cbor_event::Len::Indefinite => Err(cbor_event::Error::IndefiniteLenNotSupported(cbor_event::Type::NegativeInteger).into()),
+        cbor_event::Len::Indefinite => Err(cbor_event::Error::IndefiniteLenNotSupported(
+            cbor_event::Type::NegativeInteger,
+        )
+        .into()),
         cbor_event::Len::Len(v) => {
             raw.advance(1 + len_sz)?;
             Ok(-(v as i128) - 1)
@@ -672,28 +748,46 @@ fn read_nint<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result <i128, Dese
 
 impl serde::Serialize for Int {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: serde::Serializer {
+    where
+        S: serde::Serializer,
+    {
         serializer.serialize_str(&self.to_str())
     }
 }
 
-impl <'de> serde::de::Deserialize<'de> for Int {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where
-    D: serde::de::Deserializer<'de> {
+impl<'de> serde::de::Deserialize<'de> for Int {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
         let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
-        Self::from_str(&s).map_err(|_e| serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &"string rep of a number"))
+        Self::from_str(&s).map_err(|_e| {
+            serde::de::Error::invalid_value(
+                serde::de::Unexpected::Str(&s),
+                &"string rep of a number",
+            )
+        })
     }
 }
 
 impl JsonSchema for Int {
-    fn schema_name() -> String { String::from("Int") }
-    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema { String::json_schema(gen) }
-    fn is_referenceable() -> bool { String::is_referenceable() }
+    fn schema_name() -> String {
+        String::from("Int")
+    }
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        String::json_schema(gen)
+    }
+    fn is_referenceable() -> bool {
+        String::is_referenceable()
+    }
 }
 
 const BOUNDED_BYTES_CHUNK_SIZE: usize = 64;
 
-pub (crate) fn write_bounded_bytes<'se, W: Write>(serializer: &'se mut Serializer<W>, bytes: &[u8]) -> cbor_event::Result<&'se mut Serializer<W>> {
+pub(crate) fn write_bounded_bytes<'se, W: Write>(
+    serializer: &'se mut Serializer<W>,
+    bytes: &[u8],
+) -> cbor_event::Result<&'se mut Serializer<W>> {
     if bytes.len() <= BOUNDED_BYTES_CHUNK_SIZE {
         serializer.write_bytes(bytes)
     } else {
@@ -706,7 +800,9 @@ pub (crate) fn write_bounded_bytes<'se, W: Write>(serializer: &'se mut Serialize
     }
 }
 
-pub (crate) fn read_bounded_bytes<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Vec<u8>, DeserializeError> {
+pub(crate) fn read_bounded_bytes<R: BufRead + Seek>(
+    raw: &mut Deserializer<R>,
+) -> Result<Vec<u8>, DeserializeError> {
     use std::io::Read;
     let t = raw.cbor_type()?;
     if t != CBORType::Bytes {
@@ -717,14 +813,15 @@ pub (crate) fn read_bounded_bytes<R: BufRead + Seek>(raw: &mut Deserializer<R>) 
         cbor_event::Len::Len(_) => {
             let bytes = raw.bytes()?;
             if bytes.len() > BOUNDED_BYTES_CHUNK_SIZE {
-                return Err(DeserializeFailure::OutOfRange{
+                return Err(DeserializeFailure::OutOfRange {
                     min: 0,
                     max: BOUNDED_BYTES_CHUNK_SIZE,
                     found: bytes.len(),
-                }.into());
+                }
+                .into());
             }
             Ok(bytes)
-        },
+        }
         cbor_event::Len::Indefinite => {
             // this is CBOR indefinite encoding, but we must check that each chunk
             // is at most 64 big so we can't just use cbor_event's implementation
@@ -744,18 +841,23 @@ pub (crate) fn read_bounded_bytes<R: BufRead + Seek>(raw: &mut Deserializer<R>) 
                 match chunk_len {
                     // TODO: use this error instead once that PR is merged into cbor_event
                     //cbor_event::Len::Indefinite => return Err(cbor_event::Error::InvalidIndefiniteString.into()),
-                    cbor_event::Len::Indefinite => return Err(cbor_event::Error::CustomError(String::from("Illegal CBOR: Indefinite string found inside indefinite string")).into()),
+                    cbor_event::Len::Indefinite => {
+                        return Err(cbor_event::Error::CustomError(String::from(
+                            "Illegal CBOR: Indefinite string found inside indefinite string",
+                        ))
+                        .into())
+                    }
                     cbor_event::Len::Len(len) => {
                         if chunk_len_sz > BOUNDED_BYTES_CHUNK_SIZE {
-                            return Err(DeserializeFailure::OutOfRange{
+                            return Err(DeserializeFailure::OutOfRange {
                                 min: 0,
                                 max: BOUNDED_BYTES_CHUNK_SIZE,
                                 found: chunk_len_sz,
-                            }.into());
+                            }
+                            .into());
                         }
                         raw.advance(1 + chunk_len_sz)?;
-                        raw
-                            .as_mut_ref()
+                        raw.as_mut_ref()
                             .by_ref()
                             .take(len)
                             .read_to_end(&mut bytes)
@@ -767,9 +869,8 @@ pub (crate) fn read_bounded_bytes<R: BufRead + Seek>(raw: &mut Deserializer<R>) 
                 return Err(DeserializeFailure::EndingBreakMissing.into());
             }
             Ok(bytes)
-        },
+        }
     }
-
 }
 
 #[wasm_bindgen]
@@ -780,23 +881,38 @@ to_from_bytes!(BigInt);
 
 impl serde::Serialize for BigInt {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where S: serde::Serializer {
+    where
+        S: serde::Serializer,
+    {
         serializer.serialize_str(&self.to_str())
     }
 }
 
-impl <'de> serde::de::Deserialize<'de> for BigInt {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where
-    D: serde::de::Deserializer<'de> {
+impl<'de> serde::de::Deserialize<'de> for BigInt {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
         let s = <String as serde::de::Deserialize>::deserialize(deserializer)?;
-        BigInt::from_str(&s).map_err(|_e| serde::de::Error::invalid_value(serde::de::Unexpected::Str(&s), &"string rep of a big int"))
+        BigInt::from_str(&s).map_err(|_e| {
+            serde::de::Error::invalid_value(
+                serde::de::Unexpected::Str(&s),
+                &"string rep of a big int",
+            )
+        })
     }
 }
 
 impl JsonSchema for BigInt {
-    fn schema_name() -> String { String::from("BigInt") }
-    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema { String::json_schema(gen) }
-    fn is_referenceable() -> bool { String::is_referenceable() }
+    fn schema_name() -> String {
+        String::from("BigInt")
+    }
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        String::json_schema(gen)
+    }
+    fn is_referenceable() -> bool {
+        String::is_referenceable()
+    }
 }
 
 #[wasm_bindgen]
@@ -821,8 +937,7 @@ impl BigInt {
             _ => None,
         }?;
         match sign {
-            num_bigint::Sign::NoSign |
-            num_bigint::Sign::Plus => Some(Int::new(&u64_digit)),
+            num_bigint::Sign::NoSign | num_bigint::Sign::Plus => Some(Int::new(&u64_digit)),
             num_bigint::Sign::Minus => Some(Int::new_negative(&u64_digit)),
         }
     }
@@ -840,17 +955,22 @@ impl BigInt {
 }
 
 impl cbor_event::se::Serialize for BigInt {
-    fn serialize<'se, W: Write>(&self, serializer: &'se mut Serializer<W>) -> cbor_event::Result<&'se mut Serializer<W>> {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
         let (sign, u64_digits) = self.0.to_u64_digits();
         match u64_digits.len() {
             0 => serializer.write_unsigned_integer(0),
             // we use the uint/nint encodings to use a minimum of space
             1 => match sign {
                 // uint
-                num_bigint::Sign::Plus |
-                num_bigint::Sign::NoSign => serializer.write_unsigned_integer(*u64_digits.first().unwrap()),
+                num_bigint::Sign::Plus | num_bigint::Sign::NoSign => {
+                    serializer.write_unsigned_integer(*u64_digits.first().unwrap())
+                }
                 // nint
-                num_bigint::Sign::Minus => serializer.write_negative_integer(-(*u64_digits.first().unwrap() as i128) as i64),
+                num_bigint::Sign::Minus => serializer
+                    .write_negative_integer(-(*u64_digits.first().unwrap() as i128) as i64),
             },
             _ => {
                 // Small edge case: nint's minimum is -18446744073709551616 but in this bigint lib
@@ -858,25 +978,31 @@ impl cbor_event::se::Serialize for BigInt {
                 if sign == num_bigint::Sign::Minus && u64_digits == vec![0, 1] {
                     serializer.write_negative_integer(-18446744073709551616i128 as i64)
                 } else {
-                let (sign, bytes) = self.0.to_bytes_be();
+                    let (sign, bytes) = self.0.to_bytes_be();
                     match sign {
                         // positive bigint
-                        num_bigint::Sign::Plus |
-                        num_bigint::Sign::NoSign => {
+                        num_bigint::Sign::Plus | num_bigint::Sign::NoSign => {
                             serializer.write_tag(2u64)?;
                             write_bounded_bytes(serializer, &bytes)
-                        },
+                        }
                         // negative bigint
                         num_bigint::Sign::Minus => {
                             serializer.write_tag(3u64)?;
                             use std::ops::Neg;
                             // CBOR RFC defines this as the bytes of -n -1
-                            let adjusted = self.0.clone().neg().checked_sub(&num_bigint::BigInt::from(1u32)).unwrap().to_biguint().unwrap();
+                            let adjusted = self
+                                .0
+                                .clone()
+                                .neg()
+                                .checked_sub(&num_bigint::BigInt::from(1u32))
+                                .unwrap()
+                                .to_biguint()
+                                .unwrap();
                             write_bounded_bytes(serializer, &adjusted.to_bytes_be())
-                        },
+                        }
                     }
                 }
-            },
+            }
         }
     }
 }
@@ -891,29 +1017,48 @@ impl Deserialize for BigInt {
                     let bytes = read_bounded_bytes(raw)?;
                     match tag {
                         // positive bigint
-                        2 => Ok(Self(num_bigint::BigInt::from_bytes_be(num_bigint::Sign::Plus, &bytes))),
+                        2 => Ok(Self(num_bigint::BigInt::from_bytes_be(
+                            num_bigint::Sign::Plus,
+                            &bytes,
+                        ))),
                         // negative bigint
                         3 => {
                             // CBOR RFC defines this as the bytes of -n -1
-                            let initial = num_bigint::BigInt::from_bytes_be(num_bigint::Sign::Plus, &bytes);
+                            let initial =
+                                num_bigint::BigInt::from_bytes_be(num_bigint::Sign::Plus, &bytes);
                             use std::ops::Neg;
-                            let adjusted = initial.checked_add(&num_bigint::BigInt::from(1u32)).unwrap().neg();
+                            let adjusted = initial
+                                .checked_add(&num_bigint::BigInt::from(1u32))
+                                .unwrap()
+                                .neg();
                             Ok(Self(adjusted))
-                        },
-                        _ => return Err(DeserializeFailure::TagMismatch{ found: tag, expected: 2 }.into()),
+                        }
+                        _ => {
+                            return Err(DeserializeFailure::TagMismatch {
+                                found: tag,
+                                expected: 2,
+                            }
+                            .into())
+                        }
                     }
-                },
+                }
                 // uint
-                CBORType::UnsignedInteger => Ok(Self(num_bigint::BigInt::from(raw.unsigned_integer()?))),
+                CBORType::UnsignedInteger => {
+                    Ok(Self(num_bigint::BigInt::from(raw.unsigned_integer()?)))
+                }
                 // nint
                 CBORType::NegativeInteger => Ok(Self(num_bigint::BigInt::from(read_nint(raw)?))),
                 _ => return Err(DeserializeFailure::NoVariantMatched.into()),
             }
-        })().map_err(|e| e.annotate("BigInt"))
+        })()
+        .map_err(|e| e.annotate("BigInt"))
     }
 }
 
-impl<T> std::convert::From<T> for BigInt where T: std::convert::Into<num_bigint::BigInt> {
+impl<T> std::convert::From<T> for BigInt
+where
+    T: std::convert::Into<num_bigint::BigInt>,
+{
     fn from(x: T) -> Self {
         Self(x.into())
     }
@@ -922,7 +1067,7 @@ impl<T> std::convert::From<T> for BigInt where T: std::convert::Into<num_bigint:
 // we use the cbor_event::Serialize trait directly
 
 // This is only for use for plain cddl groups who need to be embedded within outer groups.
-pub (crate) trait SerializeEmbeddedGroup {
+pub(crate) trait SerializeEmbeddedGroup {
     fn serialize_as_embedded_group<'a, W: Write + Sized>(
         &self,
         serializer: &'a mut Serializer<W>,
@@ -931,9 +1076,9 @@ pub (crate) trait SerializeEmbeddedGroup {
 
 // same as cbor_event::de::Deserialize but with our DeserializeError
 pub trait Deserialize {
-    fn deserialize<R: BufRead + Seek>(
-        raw: &mut Deserializer<R>,
-    ) -> Result<Self, DeserializeError> where Self: Sized;
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError>
+    where
+        Self: Sized;
 }
 
 // auto-implement for all cbor_event Deserialize implementors
@@ -948,7 +1093,9 @@ pub trait DeserializeEmbeddedGroup {
     fn deserialize_as_embedded_group<R: BufRead + Seek>(
         raw: &mut Deserializer<R>,
         len: cbor_event::Len,
-    ) -> Result<Self, DeserializeError> where Self: Sized;
+    ) -> Result<Self, DeserializeError>
+    where
+        Self: Sized;
 }
 
 pub struct CBORReadLen {
@@ -975,7 +1122,7 @@ impl CBORReadLen {
                 } else {
                     Ok(())
                 }
-            },
+            }
             cbor_event::Len::Indefinite => Ok(()),
         }
     }
@@ -988,7 +1135,7 @@ impl CBORReadLen {
                 } else {
                     Err(DeserializeFailure::DefiniteLenMismatch(n, Some(self.read)))
                 }
-            },
+            }
             cbor_event::Len::Indefinite => Ok(()),
         }
     }
@@ -1004,14 +1151,11 @@ pub fn make_daedalus_bootstrap_witness(
 
     let pubkey = Bip32PublicKey::from_bytes(&key.0.to_public().as_ref()).unwrap();
     let vkey = Vkey::new(&pubkey.to_raw_key());
-    let signature = Ed25519Signature::from_bytes(key.0.sign(&tx_body_hash.to_bytes()).as_ref().to_vec()).unwrap();
+    let signature =
+        Ed25519Signature::from_bytes(key.0.sign(&tx_body_hash.to_bytes()).as_ref().to_vec())
+            .unwrap();
 
-    BootstrapWitness::new(
-        &vkey,
-        &signature,
-        chain_code,
-        addr.attributes(),
-    )
+    BootstrapWitness::new(&vkey, &signature, chain_code, addr.attributes())
 }
 
 #[wasm_bindgen]
@@ -1026,26 +1170,18 @@ pub fn make_icarus_bootstrap_witness(
     let vkey = Vkey::new(&raw_key.to_public());
     let signature = raw_key.sign(&tx_body_hash.to_bytes());
 
-    BootstrapWitness::new(
-        &vkey,
-        &signature,
-        chain_code,
-        addr.attributes(),
-    )
+    BootstrapWitness::new(&vkey, &signature, chain_code, addr.attributes())
 }
 
 #[wasm_bindgen]
-pub fn make_vkey_witness(
-    tx_body_hash: &TransactionHash,
-    sk: &PrivateKey
-) -> Vkeywitness {
+pub fn make_vkey_witness(tx_body_hash: &TransactionHash, sk: &PrivateKey) -> Vkeywitness {
     let sig = sk.sign(tx_body_hash.0.as_ref());
     Vkeywitness::new(&Vkey::new(&sk.to_public()), &sig)
 }
 
 #[wasm_bindgen]
 pub fn hash_auxiliary_data(auxiliary_data: &AuxiliaryData) -> AuxiliaryDataHash {
-  AuxiliaryDataHash::from(blake2b256(&auxiliary_data.to_bytes()))
+    AuxiliaryDataHash::from(blake2b256(&auxiliary_data.to_bytes()))
 }
 #[wasm_bindgen]
 pub fn hash_transaction(tx_body: &TransactionBody) -> TransactionHash {
@@ -1056,7 +1192,11 @@ pub fn hash_plutus_data(plutus_data: &PlutusData) -> DataHash {
     DataHash::from(blake2b256(&plutus_data.to_bytes()))
 }
 #[wasm_bindgen]
-pub fn hash_script_data(redeemers: &Redeemers, cost_models: &Costmdls, datums: Option<PlutusList>) -> ScriptDataHash {
+pub fn hash_script_data(
+    redeemers: &Redeemers,
+    cost_models: &Costmdls,
+    datums: Option<PlutusList>,
+) -> ScriptDataHash {
     let mut buf = Vec::new();
     if redeemers.len() == 0 && datums.is_some() {
         /*
@@ -1092,60 +1232,57 @@ pub fn internal_get_implicit_input(
     withdrawals: &Option<Withdrawals>,
     certs: &Option<Certificates>,
     pool_deposit: &BigNum, // // protocol parameter
-    key_deposit: &BigNum, // protocol parameter
+    key_deposit: &BigNum,  // protocol parameter
 ) -> Result<Value, JsError> {
     let withdrawal_sum = match &withdrawals {
         None => to_bignum(0),
-        Some(x) => x.0
-            .values()
-            .try_fold(
-                to_bignum(0),
-                |acc, ref withdrawal_amt| acc.checked_add(&withdrawal_amt)
-            )?,
+        Some(x) => {
+            x.0.values()
+                .try_fold(to_bignum(0), |acc, ref withdrawal_amt| {
+                    acc.checked_add(&withdrawal_amt)
+                })?
+        }
     };
     let certificate_refund = match &certs {
         None => to_bignum(0),
-        Some(certs) => certs.0
+        Some(certs) => certs
+            .0
             .iter()
-            .try_fold(
-                to_bignum(0),
-                |acc, ref cert| match &cert.0 {
-                    CertificateEnum::PoolRetirement(_cert) => acc.checked_add(&pool_deposit),
-                    CertificateEnum::StakeDeregistration(_cert) => acc.checked_add(&key_deposit),
-                    _ => Ok(acc),
-                }
-            )?
+            .try_fold(to_bignum(0), |acc, ref cert| match &cert.0 {
+                CertificateEnum::PoolRetirement(_cert) => acc.checked_add(&pool_deposit),
+                CertificateEnum::StakeDeregistration(_cert) => acc.checked_add(&key_deposit),
+                _ => Ok(acc),
+            })?,
     };
 
-    Ok(Value::new(&withdrawal_sum.checked_add(&certificate_refund)?))
+    Ok(Value::new(
+        &withdrawal_sum.checked_add(&certificate_refund)?,
+    ))
 }
 pub fn internal_get_deposit(
     certs: &Option<Certificates>,
     pool_deposit: &BigNum, // // protocol parameter
-    key_deposit: &BigNum, // protocol parameter
+    key_deposit: &BigNum,  // protocol parameter
 ) -> Result<Coin, JsError> {
     let certificate_refund = match &certs {
         None => to_bignum(0),
-        Some(certs) => certs.0
+        Some(certs) => certs
+            .0
             .iter()
-            .try_fold(
-                to_bignum(0),
-                |acc, ref cert| match &cert.0 {
-                    CertificateEnum::PoolRegistration(_cert) => acc.checked_add(&pool_deposit),
-                    CertificateEnum::StakeRegistration(_cert) => acc.checked_add(&key_deposit),
-                    _ => Ok(acc),
-                }
-            )?
+            .try_fold(to_bignum(0), |acc, ref cert| match &cert.0 {
+                CertificateEnum::PoolRegistration(_cert) => acc.checked_add(&pool_deposit),
+                CertificateEnum::StakeRegistration(_cert) => acc.checked_add(&key_deposit),
+                _ => Ok(acc),
+            })?,
     };
     Ok(certificate_refund)
 }
-
 
 #[wasm_bindgen]
 pub fn get_implicit_input(
     txbody: &TransactionBody,
     pool_deposit: &BigNum, // // protocol parameter
-    key_deposit: &BigNum, // protocol parameter
+    key_deposit: &BigNum,  // protocol parameter
 ) -> Result<Value, JsError> {
     internal_get_implicit_input(
         &txbody.withdrawals,
@@ -1159,13 +1296,9 @@ pub fn get_implicit_input(
 pub fn get_deposit(
     txbody: &TransactionBody,
     pool_deposit: &BigNum, // // protocol parameter
-    key_deposit: &BigNum, // protocol parameter
+    key_deposit: &BigNum,  // protocol parameter
 ) -> Result<Coin, JsError> {
-    internal_get_deposit(
-        &txbody.certs,
-        &pool_deposit,
-        &key_deposit,
-    )
+    internal_get_deposit(&txbody.certs, &pool_deposit, &key_deposit)
 }
 
 struct OutputSizeConstants {
@@ -1175,50 +1308,38 @@ struct OutputSizeConstants {
 }
 
 fn quot<T>(a: T, b: T) -> T
-where T: Sub<Output=T> + Rem<Output=T> + Div<Output=T> + Copy + Clone + std::fmt::Display {
+where
+    T: Sub<Output = T> + Rem<Output = T> + Div<Output = T> + Copy + Clone + std::fmt::Display,
+{
     (a - (a % b)) / b
 }
 
-fn bundle_size(
-    assets: &Value,
-    constants: &OutputSizeConstants,
-) -> usize {
+fn bundle_size(assets: &Value, constants: &OutputSizeConstants) -> usize {
     // based on https://github.com/input-output-hk/cardano-ledger-specs/blob/master/doc/explanations/min-utxo-alonzo.rst
     match &assets.multiasset {
         None => 2, // coinSize according the minimum value function
-        Some (assets) => {
-            let num_assets = assets.0
-                .values()
-                .fold(
-                    0,
-                    | acc, next| acc + next.len()
-                );
-            let sum_asset_name_lengths = assets.0
+        Some(assets) => {
+            let num_assets = assets.0.values().fold(0, |acc, next| acc + next.len());
+            let sum_asset_name_lengths = assets
+                .0
                 .values()
                 .flat_map(|assets| assets.0.keys())
                 .unique_by(|asset| asset.name())
-                .fold(
-                    0,
-                    | acc, next| acc + next.0.len()
-                );
-            let sum_policy_id_lengths = assets.0
-                .keys()
-                .fold(
-                    0,
-                    | acc, next| acc + next.0.len()
-                );
+                .fold(0, |acc, next| acc + next.0.len());
+            let sum_policy_id_lengths = assets.0.keys().fold(0, |acc, next| acc + next.0.len());
             // converts bytes to 8-byte long words, rounding up
             fn roundup_bytes_to_words(b: usize) -> usize {
                 quot(b + 7, 8)
             }
-            constants.k0 + roundup_bytes_to_words(
-                (num_assets * constants.k1) + sum_asset_name_lengths +
-                (constants.k2 * sum_policy_id_lengths)
-            )
+            constants.k0
+                + roundup_bytes_to_words(
+                    (num_assets * constants.k1)
+                        + sum_asset_name_lengths
+                        + (constants.k2 * sum_policy_id_lengths),
+                )
         }
     }
 }
-
 
 /// Each new language uses a different namespace for hashing its script
 /// This is because you could have a language where the same bytes have different semantics
@@ -1230,10 +1351,10 @@ fn bundle_size(
 pub enum ScriptHashNamespace {
     NativeScript,
     PlutusV1,
-    PlutusV2
+    PlutusV2,
 }
 
-pub (crate) fn hash_script(namespace: ScriptHashNamespace, script: Vec<u8>) -> ScriptHash {
+pub(crate) fn hash_script(namespace: ScriptHashNamespace, script: Vec<u8>) -> ScriptHash {
     let mut bytes = Vec::with_capacity(script.len() + 1);
     bytes.extend_from_slice(&vec![namespace as u8]);
     bytes.extend_from_slice(&script);
@@ -1243,7 +1364,7 @@ pub (crate) fn hash_script(namespace: ScriptHashNamespace, script: Vec<u8>) -> S
 #[wasm_bindgen]
 pub fn min_ada_required(
     assets: &Value,
-    has_data_hash: bool, // whether the output includes a data hash
+    has_data_hash: bool,          // whether the output includes a data hash
     coins_per_utxo_word: &BigNum, // protocol parameter (in lovelace)
 ) -> Result<BigNum, JsError> {
     // based on https://github.com/input-output-hk/cardano-ledger-specs/blob/master/doc/explanations/min-utxo-alonzo.rst
@@ -1304,7 +1425,10 @@ pub fn encode_json_str_to_native_script(
     Ok(native_script)
 }
 
-fn encode_wallet_value_to_native_script(value: serde_json::Value, self_xpub: &str) -> Result<NativeScript, JsError> {
+fn encode_wallet_value_to_native_script(
+    value: serde_json::Value,
+    self_xpub: &str,
+) -> Result<NativeScript, JsError> {
     match value {
         serde_json::Value::Object(map)
             if map.contains_key("cosigners") && map.contains_key("template") =>
@@ -1346,8 +1470,7 @@ fn encode_template_to_native_script(
     match template {
         serde_json::Value::String(cosigner) => {
             if let Some(xpub) = cosigners.get(cosigner) {
-                let bytes =
-                    Vec::from_hex(xpub).map_err(|e| JsError::from_str(&e.to_string()))?;
+                let bytes = Vec::from_hex(xpub).map_err(|e| JsError::from_str(&e.to_string()))?;
 
                 let public_key = Bip32PublicKey::from_bytes(&bytes)?;
 
@@ -1355,7 +1478,10 @@ fn encode_template_to_native_script(
                     &public_key.to_raw_key().hash(),
                 )))
             } else {
-                Err(JsError::from_str(&format!("cosigner {} not found", cosigner)))
+                Err(JsError::from_str(&format!(
+                    "cosigner {} not found",
+                    cosigner
+                )))
             }
         }
         serde_json::Value::Object(map) if map.contains_key("all") => {
@@ -1403,8 +1529,7 @@ fn encode_template_to_native_script(
 
                     if let serde_json::Value::Array(array) = some.get("from").unwrap() {
                         for val in array {
-                            from_scripts
-                                .add(&encode_template_to_native_script(val, cosigners)?);
+                            from_scripts.add(&encode_template_to_native_script(val, cosigners)?);
                         }
                     } else {
                         return Err(JsError::from_str("from must be an array"));
@@ -1474,14 +1599,8 @@ mod tests {
     fn one_policy_one_0_char_asset() -> Value {
         let mut token_bundle = MultiAsset::new();
         let mut asset_list = Assets::new();
-        asset_list.insert(
-            &AssetName(vec![]),
-            &BigNum(1)
-        );
-        token_bundle.insert(
-            &PolicyID::from([0; ScriptHash::BYTE_COUNT]),
-            &asset_list
-        );
+        asset_list.insert(&AssetName(vec![]), &BigNum(1));
+        token_bundle.insert(&PolicyID::from([0; ScriptHash::BYTE_COUNT]), &asset_list);
         Value {
             coin: BigNum(0),
             multiasset: Some(token_bundle),
@@ -1491,14 +1610,8 @@ mod tests {
     fn one_policy_one_1_char_asset() -> Value {
         let mut token_bundle = MultiAsset::new();
         let mut asset_list = Assets::new();
-        asset_list.insert(
-            &AssetName(vec![1]),
-            &BigNum(1)
-        );
-        token_bundle.insert(
-            &PolicyID::from([0; ScriptHash::BYTE_COUNT]),
-            &asset_list
-        );
+        asset_list.insert(&AssetName(vec![1]), &BigNum(1));
+        token_bundle.insert(&PolicyID::from([0; ScriptHash::BYTE_COUNT]), &asset_list);
         Value {
             coin: BigNum(1407406),
             multiasset: Some(token_bundle),
@@ -1508,22 +1621,10 @@ mod tests {
     fn one_policy_three_1_char_assets() -> Value {
         let mut token_bundle = MultiAsset::new();
         let mut asset_list = Assets::new();
-        asset_list.insert(
-            &AssetName(vec![1]),
-            &BigNum(1)
-        );
-        asset_list.insert(
-            &AssetName(vec![2]),
-            &BigNum(1)
-        );
-        asset_list.insert(
-            &AssetName(vec![3]),
-            &BigNum(1)
-        );
-        token_bundle.insert(
-            &PolicyID::from([0; ScriptHash::BYTE_COUNT]),
-            &asset_list
-        );
+        asset_list.insert(&AssetName(vec![1]), &BigNum(1));
+        asset_list.insert(&AssetName(vec![2]), &BigNum(1));
+        asset_list.insert(&AssetName(vec![3]), &BigNum(1));
+        token_bundle.insert(&PolicyID::from([0; ScriptHash::BYTE_COUNT]), &asset_list);
         Value {
             coin: BigNum(1555554),
             multiasset: Some(token_bundle),
@@ -1533,18 +1634,9 @@ mod tests {
     fn two_policies_one_0_char_asset() -> Value {
         let mut token_bundle = MultiAsset::new();
         let mut asset_list = Assets::new();
-        asset_list.insert(
-            &AssetName(vec![]),
-            &BigNum(1)
-        );
-        token_bundle.insert(
-            &PolicyID::from([0; ScriptHash::BYTE_COUNT]),
-            &asset_list
-        );
-        token_bundle.insert(
-            &PolicyID::from([1; ScriptHash::BYTE_COUNT]),
-            &asset_list
-        );
+        asset_list.insert(&AssetName(vec![]), &BigNum(1));
+        token_bundle.insert(&PolicyID::from([0; ScriptHash::BYTE_COUNT]), &asset_list);
+        token_bundle.insert(&PolicyID::from([1; ScriptHash::BYTE_COUNT]), &asset_list);
         Value {
             coin: BigNum(1592591),
             multiasset: Some(token_bundle),
@@ -1554,18 +1646,9 @@ mod tests {
     fn two_policies_one_1_char_asset() -> Value {
         let mut token_bundle = MultiAsset::new();
         let mut asset_list = Assets::new();
-        asset_list.insert(
-            &AssetName(vec![1]),
-            &BigNum(1)
-        );
-        token_bundle.insert(
-            &PolicyID::from([0; ScriptHash::BYTE_COUNT]),
-            &asset_list
-        );
-        token_bundle.insert(
-            &PolicyID::from([1; ScriptHash::BYTE_COUNT]),
-            &asset_list
-        );
+        asset_list.insert(&AssetName(vec![1]), &BigNum(1));
+        token_bundle.insert(&PolicyID::from([0; ScriptHash::BYTE_COUNT]), &asset_list);
+        token_bundle.insert(&PolicyID::from([1; ScriptHash::BYTE_COUNT]), &asset_list);
         Value {
             coin: BigNum(1592591),
             multiasset: Some(token_bundle),
@@ -1578,14 +1661,11 @@ mod tests {
             let mut asset_list = Assets::new();
 
             for i in 0..32 {
-                asset_list.insert(
-                    &AssetName(vec![index * 32 + i]),
-                    &BigNum(1)
-                );
+                asset_list.insert(&AssetName(vec![index * 32 + i]), &BigNum(1));
             }
             token_bundle.insert(
                 &PolicyID::from([index; ScriptHash::BYTE_COUNT]),
-                &asset_list
+                &asset_list,
             );
         }
         add_policy(&mut token_bundle, 1);
@@ -1600,22 +1680,10 @@ mod tests {
     fn one_policy_three_32_char_assets() -> Value {
         let mut token_bundle = MultiAsset::new();
         let mut asset_list = Assets::new();
-        asset_list.insert(
-            &AssetName(vec![1; 32]),
-            &BigNum(1)
-        );
-        asset_list.insert(
-            &AssetName(vec![2; 32]),
-            &BigNum(1)
-        );
-        asset_list.insert(
-            &AssetName(vec![3; 32]),
-            &BigNum(1)
-        );
-        token_bundle.insert(
-            &PolicyID::from([0; ScriptHash::BYTE_COUNT]),
-            &asset_list
-        );
+        asset_list.insert(&AssetName(vec![1; 32]), &BigNum(1));
+        asset_list.insert(&AssetName(vec![2; 32]), &BigNum(1));
+        asset_list.insert(&AssetName(vec![3; 32]), &BigNum(1));
+        token_bundle.insert(&PolicyID::from([0; ScriptHash::BYTE_COUNT]), &asset_list);
         Value {
             coin: BigNum(1555554),
             multiasset: Some(token_bundle),
@@ -1625,7 +1693,14 @@ mod tests {
     #[test]
     fn min_ada_value_no_multiasset() {
         assert_eq!(
-            from_bignum(&min_ada_required(&Value::new(&Coin::zero()), false, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
+            from_bignum(
+                &min_ada_required(
+                    &Value::new(&Coin::zero()),
+                    false,
+                    &to_bignum(COINS_PER_UTXO_WORD)
+                )
+                .unwrap()
+            ),
             999978,
         );
     }
@@ -1633,7 +1708,14 @@ mod tests {
     #[test]
     fn min_ada_value_one_policy_one_0_char_asset() {
         assert_eq!(
-            from_bignum(&min_ada_required(&one_policy_one_0_char_asset(), false, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
+            from_bignum(
+                &min_ada_required(
+                    &one_policy_one_0_char_asset(),
+                    false,
+                    &to_bignum(COINS_PER_UTXO_WORD)
+                )
+                .unwrap()
+            ),
             1_310_316,
         );
     }
@@ -1641,7 +1723,14 @@ mod tests {
     #[test]
     fn min_ada_value_one_policy_one_1_char_asset() {
         assert_eq!(
-            from_bignum(&min_ada_required(&one_policy_one_1_char_asset(), false, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
+            from_bignum(
+                &min_ada_required(
+                    &one_policy_one_1_char_asset(),
+                    false,
+                    &to_bignum(COINS_PER_UTXO_WORD)
+                )
+                .unwrap()
+            ),
             1_344_798,
         );
     }
@@ -1649,7 +1738,14 @@ mod tests {
     #[test]
     fn min_ada_value_one_policy_three_1_char_assets() {
         assert_eq!(
-            from_bignum(&min_ada_required(&one_policy_three_1_char_assets(), false, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
+            from_bignum(
+                &min_ada_required(
+                    &one_policy_three_1_char_assets(),
+                    false,
+                    &to_bignum(COINS_PER_UTXO_WORD)
+                )
+                .unwrap()
+            ),
             1_448_244,
         );
     }
@@ -1657,7 +1753,14 @@ mod tests {
     #[test]
     fn min_ada_value_two_policies_one_0_char_asset() {
         assert_eq!(
-            from_bignum(&min_ada_required(&two_policies_one_0_char_asset(), false, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
+            from_bignum(
+                &min_ada_required(
+                    &two_policies_one_0_char_asset(),
+                    false,
+                    &to_bignum(COINS_PER_UTXO_WORD)
+                )
+                .unwrap()
+            ),
             1_482_726,
         );
     }
@@ -1665,7 +1768,14 @@ mod tests {
     #[test]
     fn min_ada_value_two_policies_one_1_char_asset() {
         assert_eq!(
-            from_bignum(&min_ada_required(&two_policies_one_1_char_asset(), false, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
+            from_bignum(
+                &min_ada_required(
+                    &two_policies_one_1_char_asset(),
+                    false,
+                    &to_bignum(COINS_PER_UTXO_WORD)
+                )
+                .unwrap()
+            ),
             1_517_208,
         );
     }
@@ -1673,7 +1783,14 @@ mod tests {
     #[test]
     fn min_ada_value_three_policies_96_1_char_assets() {
         assert_eq!(
-            from_bignum(&min_ada_required(&three_policies_96_1_char_assets(), false, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
+            from_bignum(
+                &min_ada_required(
+                    &three_policies_96_1_char_assets(),
+                    false,
+                    &to_bignum(COINS_PER_UTXO_WORD)
+                )
+                .unwrap()
+            ),
             6_896_400,
         );
     }
@@ -1681,7 +1798,14 @@ mod tests {
     #[test]
     fn min_ada_value_one_policy_one_0_char_asset_datum_hash() {
         assert_eq!(
-            from_bignum(&min_ada_required(&one_policy_one_0_char_asset(), true, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
+            from_bignum(
+                &min_ada_required(
+                    &one_policy_one_0_char_asset(),
+                    true,
+                    &to_bignum(COINS_PER_UTXO_WORD)
+                )
+                .unwrap()
+            ),
             1_655_136,
         );
     }
@@ -1689,7 +1813,14 @@ mod tests {
     #[test]
     fn min_ada_value_one_policy_three_32_char_assets_datum_hash() {
         assert_eq!(
-            from_bignum(&min_ada_required(&one_policy_three_32_char_assets(), true, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
+            from_bignum(
+                &min_ada_required(
+                    &one_policy_three_32_char_assets(),
+                    true,
+                    &to_bignum(COINS_PER_UTXO_WORD)
+                )
+                .unwrap()
+            ),
             2_172_366,
         );
     }
@@ -1697,7 +1828,14 @@ mod tests {
     #[test]
     fn min_ada_value_two_policies_one_0_char_asset_datum_hash() {
         assert_eq!(
-            from_bignum(&min_ada_required(&two_policies_one_0_char_asset(), true, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
+            from_bignum(
+                &min_ada_required(
+                    &two_policies_one_0_char_asset(),
+                    true,
+                    &to_bignum(COINS_PER_UTXO_WORD)
+                )
+                .unwrap()
+            ),
             1_827_546,
         );
     }
@@ -1747,36 +1885,15 @@ mod tests {
         let mut token_bundle1 = MultiAsset::new();
         {
             let mut asset_list1 = Assets::new();
-            asset_list1.insert(
-                &asset1,
-                &BigNum(1)
-            );
-            asset_list1.insert(
-                &asset2,
-                &BigNum(1)
-            );
-            asset_list1.insert(
-                &asset3,
-                &BigNum(1)
-            );
-            asset_list1.insert(
-                &asset4,
-                &BigNum(2)
-            );
-            token_bundle1.insert(
-                &policy1,
-                &asset_list1
-            );
+            asset_list1.insert(&asset1, &BigNum(1));
+            asset_list1.insert(&asset2, &BigNum(1));
+            asset_list1.insert(&asset3, &BigNum(1));
+            asset_list1.insert(&asset4, &BigNum(2));
+            token_bundle1.insert(&policy1, &asset_list1);
 
             let mut asset_list2 = Assets::new();
-            asset_list2.insert(
-                &asset1,
-                &BigNum(1)
-            );
-            token_bundle1.insert(
-                &policy2,
-                &asset_list2
-            );
+            asset_list2.insert(&asset1, &BigNum(1));
+            token_bundle1.insert(&policy2, &asset_list2);
         }
         let assets1 = Value {
             coin: BigNum(1555554),
@@ -1787,36 +1904,18 @@ mod tests {
         {
             let mut asset_list2 = Assets::new();
             // more than asset1 bundle
-            asset_list2.insert(
-                &asset1,
-                &BigNum(2)
-            );
+            asset_list2.insert(&asset1, &BigNum(2));
             // exactly equal to asset1 bundle
-            asset_list2.insert(
-                &asset2,
-                &BigNum(1)
-            );
+            asset_list2.insert(&asset2, &BigNum(1));
             // skip asset 3
             // less than in asset1 bundle
-            asset_list2.insert(
-                &asset4,
-                &BigNum(1)
-            );
-            token_bundle2.insert(
-                &policy1,
-                &asset_list2
-            );
+            asset_list2.insert(&asset4, &BigNum(1));
+            token_bundle2.insert(&policy1, &asset_list2);
 
             // this policy should be removed entirely
             let mut asset_list2 = Assets::new();
-            asset_list2.insert(
-                &asset1,
-                &BigNum(1)
-            );
-            token_bundle2.insert(
-                &policy2,
-                &asset_list2
-            );
+            asset_list2.insert(&asset1, &BigNum(1));
+            token_bundle2.insert(&policy2, &asset_list2);
         }
 
         let assets2 = Value {
@@ -1825,27 +1924,15 @@ mod tests {
         };
 
         let result = assets1.clamped_sub(&assets2);
-        assert_eq!(
-            result.coin().to_str(),
-            "0"
-        );
+        assert_eq!(result.coin().to_str(), "0");
         assert_eq!(
             result.multiasset().unwrap().len(),
             1 // policy 2 was deleted successfully
         );
         let policy1_content = result.multiasset().unwrap().get(&policy1).unwrap();
-        assert_eq!(
-            policy1_content.len(),
-            2
-        );
-        assert_eq!(
-            policy1_content.get(&asset3).unwrap().to_str(),
-            "1"
-        );
-        assert_eq!(
-            policy1_content.get(&asset4).unwrap().to_str(),
-            "1"
-        );
+        assert_eq!(policy1_content.len(), 2);
+        assert_eq!(policy1_content.get(&asset3).unwrap().to_str(), "1");
+        assert_eq!(policy1_content.get(&asset4).unwrap().to_str(), "1");
     }
 
     #[test]
@@ -1875,14 +1962,8 @@ mod tests {
         {
             let mut token_bundle1 = MultiAsset::new();
             let mut asset_list1 = Assets::new();
-            asset_list1.insert(
-                &asset1,
-                &BigNum(1)
-            );
-            token_bundle1.insert(
-                &policy1,
-                &asset_list1
-            );
+            asset_list1.insert(&asset1, &BigNum(1));
+            token_bundle1.insert(&policy1, &asset_list1);
             let a = Value {
                 coin: BigNum(1),
                 multiasset: Some(token_bundle1),
@@ -1893,14 +1974,8 @@ mod tests {
         {
             let mut token_bundle1 = MultiAsset::new();
             let mut asset_list1 = Assets::new();
-            asset_list1.insert(
-                &asset1,
-                &BigNum(1)
-            );
-            token_bundle1.insert(
-                &policy1,
-                &asset_list1
-            );
+            asset_list1.insert(&asset1, &BigNum(1));
+            token_bundle1.insert(&policy1, &asset_list1);
             let a = Value::new(&to_bignum(1));
             let b = Value {
                 coin: BigNum(1),
@@ -1912,14 +1987,8 @@ mod tests {
         {
             let mut token_bundle1 = MultiAsset::new();
             let mut asset_list1 = Assets::new();
-            asset_list1.insert(
-                &asset1,
-                &BigNum(1)
-            );
-            token_bundle1.insert(
-                &policy1,
-                &asset_list1
-            );
+            asset_list1.insert(&asset1, &BigNum(1));
+            token_bundle1.insert(&policy1, &asset_list1);
             let a = Value {
                 coin: BigNum(1),
                 multiasset: Some(token_bundle1),
@@ -1927,14 +1996,8 @@ mod tests {
 
             let mut token_bundle2 = MultiAsset::new();
             let mut asset_list2 = Assets::new();
-            asset_list2.insert(
-                &asset1,
-                &BigNum(1)
-            );
-            token_bundle2.insert(
-                &policy1,
-                &asset_list2
-            );
+            asset_list2.insert(&asset1, &BigNum(1));
+            token_bundle2.insert(&policy1, &asset_list2);
             let b = Value {
                 coin: BigNum(1),
                 multiasset: Some(token_bundle2),
@@ -1944,14 +2007,8 @@ mod tests {
         {
             let mut token_bundle1 = MultiAsset::new();
             let mut asset_list1 = Assets::new();
-            asset_list1.insert(
-                &asset1,
-                &BigNum(1)
-            );
-            token_bundle1.insert(
-                &policy1,
-                &asset_list1
-            );
+            asset_list1.insert(&asset1, &BigNum(1));
+            token_bundle1.insert(&policy1, &asset_list1);
             let a = Value {
                 coin: BigNum(2),
                 multiasset: Some(token_bundle1),
@@ -1959,14 +2016,8 @@ mod tests {
 
             let mut token_bundle2 = MultiAsset::new();
             let mut asset_list2 = Assets::new();
-            asset_list2.insert(
-                &asset1,
-                &BigNum(1)
-            );
-            token_bundle2.insert(
-                &policy1,
-                &asset_list2
-            );
+            asset_list2.insert(&asset1, &BigNum(1));
+            token_bundle2.insert(&policy1, &asset_list2);
             let b = Value {
                 coin: BigNum(1),
                 multiasset: Some(token_bundle2),
@@ -1976,14 +2027,8 @@ mod tests {
         {
             let mut token_bundle1 = MultiAsset::new();
             let mut asset_list1 = Assets::new();
-            asset_list1.insert(
-                &asset1,
-                &BigNum(1)
-            );
-            token_bundle1.insert(
-                &policy1,
-                &asset_list1
-            );
+            asset_list1.insert(&asset1, &BigNum(1));
+            token_bundle1.insert(&policy1, &asset_list1);
             let a = Value {
                 coin: BigNum(1),
                 multiasset: Some(token_bundle1),
@@ -1991,14 +2036,8 @@ mod tests {
 
             let mut token_bundle2 = MultiAsset::new();
             let mut asset_list2 = Assets::new();
-            asset_list2.insert(
-                &asset1,
-                &BigNum(1)
-            );
-            token_bundle2.insert(
-                &policy1,
-                &asset_list2
-            );
+            asset_list2.insert(&asset1, &BigNum(1));
+            token_bundle2.insert(&policy1, &asset_list2);
             let b = Value {
                 coin: BigNum(2),
                 multiasset: Some(token_bundle2),
@@ -2008,14 +2047,8 @@ mod tests {
         {
             let mut token_bundle1 = MultiAsset::new();
             let mut asset_list1 = Assets::new();
-            asset_list1.insert(
-                &asset1,
-                &BigNum(2)
-            );
-            token_bundle1.insert(
-                &policy1,
-                &asset_list1
-            );
+            asset_list1.insert(&asset1, &BigNum(2));
+            token_bundle1.insert(&policy1, &asset_list1);
             let a = Value {
                 coin: BigNum(1),
                 multiasset: Some(token_bundle1),
@@ -2023,14 +2056,8 @@ mod tests {
 
             let mut token_bundle2 = MultiAsset::new();
             let mut asset_list2 = Assets::new();
-            asset_list2.insert(
-                &asset1,
-                &BigNum(1)
-            );
-            token_bundle2.insert(
-                &policy1,
-                &asset_list2
-            );
+            asset_list2.insert(&asset1, &BigNum(1));
+            token_bundle2.insert(&policy1, &asset_list2);
             let b = Value {
                 coin: BigNum(1),
                 multiasset: Some(token_bundle2),
@@ -2040,14 +2067,8 @@ mod tests {
         {
             let mut token_bundle1 = MultiAsset::new();
             let mut asset_list1 = Assets::new();
-            asset_list1.insert(
-                &asset1,
-                &BigNum(2)
-            );
-            token_bundle1.insert(
-                &policy1,
-                &asset_list1
-            );
+            asset_list1.insert(&asset1, &BigNum(2));
+            token_bundle1.insert(&policy1, &asset_list1);
             let a = Value {
                 coin: BigNum(2),
                 multiasset: Some(token_bundle1),
@@ -2055,14 +2076,8 @@ mod tests {
 
             let mut token_bundle2 = MultiAsset::new();
             let mut asset_list2 = Assets::new();
-            asset_list2.insert(
-                &asset1,
-                &BigNum(1)
-            );
-            token_bundle2.insert(
-                &policy1,
-                &asset_list2
-            );
+            asset_list2.insert(&asset1, &BigNum(1));
+            token_bundle2.insert(&policy1, &asset_list2);
             let b = Value {
                 coin: BigNum(1),
                 multiasset: Some(token_bundle2),
@@ -2072,14 +2087,8 @@ mod tests {
         {
             let mut token_bundle1 = MultiAsset::new();
             let mut asset_list1 = Assets::new();
-            asset_list1.insert(
-                &asset1,
-                &BigNum(2)
-            );
-            token_bundle1.insert(
-                &policy1,
-                &asset_list1
-            );
+            asset_list1.insert(&asset1, &BigNum(2));
+            token_bundle1.insert(&policy1, &asset_list1);
             let a = Value {
                 coin: BigNum(1),
                 multiasset: Some(token_bundle1),
@@ -2087,14 +2096,8 @@ mod tests {
 
             let mut token_bundle2 = MultiAsset::new();
             let mut asset_list2 = Assets::new();
-            asset_list2.insert(
-                &asset1,
-                &BigNum(1)
-            );
-            token_bundle2.insert(
-                &policy1,
-                &asset_list2
-            );
+            asset_list2.insert(&asset1, &BigNum(1));
+            token_bundle2.insert(&policy1, &asset_list2);
             let b = Value {
                 coin: BigNum(2),
                 multiasset: Some(token_bundle2),
@@ -2104,14 +2107,8 @@ mod tests {
         {
             let mut token_bundle1 = MultiAsset::new();
             let mut asset_list1 = Assets::new();
-            asset_list1.insert(
-                &asset1,
-                &BigNum(1)
-            );
-            token_bundle1.insert(
-                &policy1,
-                &asset_list1
-            );
+            asset_list1.insert(&asset1, &BigNum(1));
+            token_bundle1.insert(&policy1, &asset_list1);
             let a = Value {
                 coin: BigNum(1),
                 multiasset: Some(token_bundle1),
@@ -2119,14 +2116,8 @@ mod tests {
 
             let mut token_bundle2 = MultiAsset::new();
             let mut asset_list2 = Assets::new();
-            asset_list2.insert(
-                &asset1,
-                &BigNum(2)
-            );
-            token_bundle2.insert(
-                &policy1,
-                &asset_list2
-            );
+            asset_list2.insert(&asset1, &BigNum(2));
+            token_bundle2.insert(&policy1, &asset_list2);
             let b = Value {
                 coin: BigNum(1),
                 multiasset: Some(token_bundle2),
@@ -2136,14 +2127,8 @@ mod tests {
         {
             let mut token_bundle1 = MultiAsset::new();
             let mut asset_list1 = Assets::new();
-            asset_list1.insert(
-                &asset1,
-                &BigNum(1)
-            );
-            token_bundle1.insert(
-                &policy1,
-                &asset_list1
-            );
+            asset_list1.insert(&asset1, &BigNum(1));
+            token_bundle1.insert(&policy1, &asset_list1);
             let a = Value {
                 coin: BigNum(1),
                 multiasset: Some(token_bundle1),
@@ -2151,14 +2136,8 @@ mod tests {
 
             let mut token_bundle2 = MultiAsset::new();
             let mut asset_list2 = Assets::new();
-            asset_list2.insert(
-                &asset1,
-                &BigNum(2)
-            );
-            token_bundle2.insert(
-                &policy1,
-                &asset_list2
-            );
+            asset_list2.insert(&asset1, &BigNum(2));
+            token_bundle2.insert(&policy1, &asset_list2);
             let b = Value {
                 coin: BigNum(2),
                 multiasset: Some(token_bundle2),
@@ -2168,14 +2147,8 @@ mod tests {
         {
             let mut token_bundle1 = MultiAsset::new();
             let mut asset_list1 = Assets::new();
-            asset_list1.insert(
-                &asset1,
-                &BigNum(1)
-            );
-            token_bundle1.insert(
-                &policy1,
-                &asset_list1
-            );
+            asset_list1.insert(&asset1, &BigNum(1));
+            token_bundle1.insert(&policy1, &asset_list1);
             let a = Value {
                 coin: BigNum(2),
                 multiasset: Some(token_bundle1),
@@ -2183,14 +2156,8 @@ mod tests {
 
             let mut token_bundle2 = MultiAsset::new();
             let mut asset_list2 = Assets::new();
-            asset_list2.insert(
-                &asset1,
-                &BigNum(2)
-            );
-            token_bundle2.insert(
-                &policy1,
-                &asset_list2
-            );
+            asset_list2.insert(&asset1, &BigNum(2));
+            token_bundle2.insert(&policy1, &asset_list2);
             let b = Value {
                 coin: BigNum(1),
                 multiasset: Some(token_bundle2),
@@ -2200,14 +2167,8 @@ mod tests {
         {
             let mut token_bundle1 = MultiAsset::new();
             let mut asset_list1 = Assets::new();
-            asset_list1.insert(
-                &asset1,
-                &BigNum(1)
-            );
-            token_bundle1.insert(
-                &policy1,
-                &asset_list1
-            );
+            asset_list1.insert(&asset1, &BigNum(1));
+            token_bundle1.insert(&policy1, &asset_list1);
             let a = Value {
                 coin: BigNum(1),
                 multiasset: Some(token_bundle1),
@@ -2215,14 +2176,8 @@ mod tests {
 
             let mut token_bundle2 = MultiAsset::new();
             let mut asset_list2 = Assets::new();
-            asset_list2.insert(
-                &asset2,
-                &BigNum(1)
-            );
-            token_bundle2.insert(
-                &policy1,
-                &asset_list2
-            );
+            asset_list2.insert(&asset2, &BigNum(1));
+            token_bundle2.insert(&policy1, &asset_list2);
             let b = Value {
                 coin: BigNum(1),
                 multiasset: Some(token_bundle2),
@@ -2256,16 +2211,34 @@ mod tests {
 
         // taken from CBOR RFC examples
         // negative big int
-        assert_eq!(hex::decode("c349010000000000000000").unwrap(), BigInt::from_str("-18446744073709551617").unwrap().to_bytes());
+        assert_eq!(
+            hex::decode("c349010000000000000000").unwrap(),
+            BigInt::from_str("-18446744073709551617")
+                .unwrap()
+                .to_bytes()
+        );
         // positive big int
-        assert_eq!(hex::decode("c249010000000000000000").unwrap(), BigInt::from_str("18446744073709551616").unwrap().to_bytes());
+        assert_eq!(
+            hex::decode("c249010000000000000000").unwrap(),
+            BigInt::from_str("18446744073709551616").unwrap().to_bytes()
+        );
         // uint
-        assert_eq!(hex::decode("1b000000e8d4a51000").unwrap(), BigInt::from_str("1000000000000").unwrap().to_bytes());
+        assert_eq!(
+            hex::decode("1b000000e8d4a51000").unwrap(),
+            BigInt::from_str("1000000000000").unwrap().to_bytes()
+        );
         // nint (lowest possible - used to be unsupported but works now)
-        assert_eq!(hex::decode("3bffffffffffffffff").unwrap(), BigInt::from_str("-18446744073709551616").unwrap().to_bytes());
+        assert_eq!(
+            hex::decode("3bffffffffffffffff").unwrap(),
+            BigInt::from_str("-18446744073709551616")
+                .unwrap()
+                .to_bytes()
+        );
         // this one fits in an i64 though
-        assert_eq!(hex::decode("3903e7").unwrap(), BigInt::from_str("-1000").unwrap().to_bytes());
-
+        assert_eq!(
+            hex::decode("3903e7").unwrap(),
+            BigInt::from_str("-1000").unwrap().to_bytes()
+        );
 
         let x = BigInt::from_str("-18446744073709551617").unwrap();
         let x_rt = BigInt::from_bytes(x.to_bytes()).unwrap();
@@ -2300,10 +2273,7 @@ mod tests {
     fn bounded_bytes_write_chunked() {
         let mut chunk_64 = vec![0x58, BOUNDED_BYTES_CHUNK_SIZE as u8];
         chunk_64.extend(std::iter::repeat(37).take(BOUNDED_BYTES_CHUNK_SIZE));
-        let chunks = vec![
-            chunk_64,
-            vec![0x44, 0x01, 0x02, 0x03, 0x04],
-        ];
+        let chunks = vec![chunk_64, vec![0x44, 0x01, 0x02, 0x03, 0x04]];
         let mut input = Vec::new();
         input.extend_from_slice(&chunks[0][2..]);
         input.extend_from_slice(&chunks[1][1..]);
@@ -2323,25 +2293,39 @@ mod tests {
         let mut datums = PlutusList::new();
         datums.add(&PlutusData::new_integer(&BigInt::from_str("1000").unwrap()));
         let mut redeemers = Redeemers::new();
-        redeemers.add(&Redeemer::new(&RedeemerTag::new_spend(), &BigNum::from_str("1").unwrap(), &PlutusData::new_integer(&BigInt::from_str("2000").unwrap()), &ExUnits::new(&BigNum::from_str("0").unwrap(), &BigNum::from_str("0").unwrap())));
+        redeemers.add(&Redeemer::new(
+            &RedeemerTag::new_spend(),
+            &BigNum::from_str("1").unwrap(),
+            &PlutusData::new_integer(&BigInt::from_str("2000").unwrap()),
+            &ExUnits::new(
+                &BigNum::from_str("0").unwrap(),
+                &BigNum::from_str("0").unwrap(),
+            ),
+        ));
         let plutus_cost_model = CostModel::from_bytes(vec![
-            159, 26, 0, 3, 2, 89, 0, 1, 1, 26, 0, 6, 11, 199, 25, 2, 109, 0, 1, 26, 0, 2, 73, 240, 25, 3, 232, 0, 1, 26, 0,
-            2, 73, 240, 24, 32, 26, 0, 37, 206, 168, 25, 113, 247, 4, 25, 116, 77, 24, 100, 25, 116, 77, 24, 100, 25, 116, 77,
-            24, 100, 25, 116, 77, 24, 100, 25, 116, 77, 24, 100, 25, 116, 77, 24, 100, 24, 100, 24, 100, 25, 116, 77, 24, 100,
-            26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73, 240, 25, 3, 232, 0,
-            1, 26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73, 240, 25, 3, 232, 0, 8, 26, 0, 2, 66, 32, 26, 0, 6, 126, 35, 24, 118, 0,
-            1, 1, 26, 0, 2, 73, 240, 25, 3, 232, 0, 8, 26, 0, 2, 73, 240, 26, 0, 1, 183, 152, 24, 247, 1, 26, 0, 2, 73, 240, 25,
-            39, 16, 1, 26, 0, 2, 21, 94, 25, 5, 46, 1, 25, 3, 232, 26, 0, 2, 73, 240, 25, 3, 232, 1, 26, 0, 2, 73, 240, 24, 32,
-            26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73, 240, 24, 32, 1, 1, 26, 0, 2, 73, 240, 1, 26, 0, 2, 73, 240, 4, 26, 0, 1, 148,
-            175, 24, 248, 1, 26, 0, 1, 148, 175, 24, 248, 1, 26, 0, 2, 55, 124, 25, 5, 86, 1, 26, 0, 2, 189, 234, 25, 1, 241, 1,
-            26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73, 240, 24, 32, 26, 0, 2,
-            73, 240, 24, 32, 26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 66, 32, 26, 0, 6, 126, 35, 24, 118, 0, 1, 1, 25, 240, 76, 25, 43,
-            210, 0, 1, 26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 66, 32, 26, 0, 6, 126, 35, 24, 118, 0, 1, 1, 26, 0, 2, 66, 32, 26, 0, 6,
-            126, 35, 24, 118, 0, 1, 1, 26, 0, 37, 206, 168, 25, 113, 247, 4, 0, 26, 0, 1, 65, 187, 4, 26, 0, 2, 73, 240, 25, 19,
-            136, 0, 1, 26, 0, 2, 73, 240, 24, 32, 26, 0, 3, 2, 89, 0, 1, 1, 26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73, 240, 24, 32,
-            26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73,
-            240, 24, 32, 26, 0, 51, 13, 167, 1, 1, 255
-        ]).unwrap();
+            159, 26, 0, 3, 2, 89, 0, 1, 1, 26, 0, 6, 11, 199, 25, 2, 109, 0, 1, 26, 0, 2, 73, 240,
+            25, 3, 232, 0, 1, 26, 0, 2, 73, 240, 24, 32, 26, 0, 37, 206, 168, 25, 113, 247, 4, 25,
+            116, 77, 24, 100, 25, 116, 77, 24, 100, 25, 116, 77, 24, 100, 25, 116, 77, 24, 100, 25,
+            116, 77, 24, 100, 25, 116, 77, 24, 100, 24, 100, 24, 100, 25, 116, 77, 24, 100, 26, 0,
+            2, 73, 240, 24, 32, 26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73,
+            240, 25, 3, 232, 0, 1, 26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73, 240, 25, 3, 232, 0, 8,
+            26, 0, 2, 66, 32, 26, 0, 6, 126, 35, 24, 118, 0, 1, 1, 26, 0, 2, 73, 240, 25, 3, 232,
+            0, 8, 26, 0, 2, 73, 240, 26, 0, 1, 183, 152, 24, 247, 1, 26, 0, 2, 73, 240, 25, 39, 16,
+            1, 26, 0, 2, 21, 94, 25, 5, 46, 1, 25, 3, 232, 26, 0, 2, 73, 240, 25, 3, 232, 1, 26, 0,
+            2, 73, 240, 24, 32, 26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73, 240, 24, 32, 1, 1, 26, 0,
+            2, 73, 240, 1, 26, 0, 2, 73, 240, 4, 26, 0, 1, 148, 175, 24, 248, 1, 26, 0, 1, 148,
+            175, 24, 248, 1, 26, 0, 2, 55, 124, 25, 5, 86, 1, 26, 0, 2, 189, 234, 25, 1, 241, 1,
+            26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73, 240, 24, 32, 26, 0,
+            2, 73, 240, 24, 32, 26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 66,
+            32, 26, 0, 6, 126, 35, 24, 118, 0, 1, 1, 25, 240, 76, 25, 43, 210, 0, 1, 26, 0, 2, 73,
+            240, 24, 32, 26, 0, 2, 66, 32, 26, 0, 6, 126, 35, 24, 118, 0, 1, 1, 26, 0, 2, 66, 32,
+            26, 0, 6, 126, 35, 24, 118, 0, 1, 1, 26, 0, 37, 206, 168, 25, 113, 247, 4, 0, 26, 0, 1,
+            65, 187, 4, 26, 0, 2, 73, 240, 25, 19, 136, 0, 1, 26, 0, 2, 73, 240, 24, 32, 26, 0, 3,
+            2, 89, 0, 1, 1, 26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73,
+            240, 24, 32, 26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73, 240, 24, 32, 26, 0, 2, 73, 240,
+            24, 32, 26, 0, 2, 73, 240, 24, 32, 26, 0, 51, 13, 167, 1, 1, 255,
+        ])
+        .unwrap();
         let mut cost_models = Costmdls::new();
         cost_models.insert(&Language::new_plutus_v1(), &plutus_cost_model);
         let script_data_hash = hash_script_data(&redeemers, &cost_models, Some(datums));
@@ -2358,7 +2342,8 @@ mod tests {
         let cosigner1_hex = "a48d97f57ce49433f347d44ee07e54a100229b4f8e125d25f7bca9ad66d9707a25cd1331f46f7d6e279451637ca20802a25c441ba9436abf644fe5410d1080e3";
         let self_key_hex = "6ce83a12e9d4c783f54c0bb511303b37160a6e4f3f96b8e878a7c1f7751e18c4ccde3fb916d330d07f7bd51fb6bd99aa831d925008d3f7795033f48abd6df7f6";
         let native_script = encode_json_str_to_native_script(
-            &format!(r#"
+            &format!(
+                r#"
         {{
             "cosigners": {{
                 "cosigner#0": "{}",
@@ -2385,7 +2370,9 @@ mod tests {
                     ]
                 }}
             }}
-        }}"#, cosigner0_hex, cosigner1_hex),
+        }}"#,
+                cosigner0_hex, cosigner1_hex
+            ),
             self_key_hex,
             ScriptSchema::Wallet,
         );
@@ -2399,7 +2386,10 @@ mod tests {
         let all_0 = all.get(0).as_script_pubkey().unwrap();
         assert_eq!(
             all_0.addr_keyhash(),
-            Bip32PublicKey::from_bytes(&hex::decode(cosigner0_hex).unwrap()).unwrap().to_raw_key().hash()
+            Bip32PublicKey::from_bytes(&hex::decode(cosigner0_hex).unwrap())
+                .unwrap()
+                .to_raw_key()
+                .hash()
         );
         let all_1 = all.get(1).as_timelock_start().unwrap();
         assert_eq!(all_1.slot(), 120.into());
@@ -2408,45 +2398,88 @@ mod tests {
         let any_0 = any.get(0).as_script_pubkey().unwrap();
         assert_eq!(
             any_0.addr_keyhash(),
-            Bip32PublicKey::from_bytes(&hex::decode(cosigner1_hex).unwrap()).unwrap().to_raw_key().hash()
+            Bip32PublicKey::from_bytes(&hex::decode(cosigner1_hex).unwrap())
+                .unwrap()
+                .to_raw_key()
+                .hash()
         );
         let any_1 = any.get(1).as_timelock_expiry().unwrap();
         assert_eq!(any_1.slot(), 1000.into());
         let self_key = from.get(2).as_script_pubkey().unwrap();
         assert_eq!(
             self_key.addr_keyhash(),
-            Bip32PublicKey::from_bytes(&hex::decode(self_key_hex).unwrap()).unwrap().to_raw_key().hash()
+            Bip32PublicKey::from_bytes(&hex::decode(self_key_hex).unwrap())
+                .unwrap()
+                .to_raw_key()
+                .hash()
         );
     }
 
     #[test]
     fn int_to_str() {
-        assert_eq!(Int::new(&BigNum(u64::max_value())).to_str(), u64::max_value().to_string());
-        assert_eq!(Int::new(&BigNum(u64::min_value())).to_str(), u64::min_value().to_string());
-        assert_eq!(Int::new_negative(&BigNum(u64::max_value())).to_str(), (-(u64::max_value() as i128)).to_string());
-        assert_eq!(Int::new_negative(&BigNum(u64::min_value())).to_str(), (-(u64::min_value() as i128)).to_string());
+        assert_eq!(
+            Int::new(&BigNum(u64::max_value())).to_str(),
+            u64::max_value().to_string()
+        );
+        assert_eq!(
+            Int::new(&BigNum(u64::min_value())).to_str(),
+            u64::min_value().to_string()
+        );
+        assert_eq!(
+            Int::new_negative(&BigNum(u64::max_value())).to_str(),
+            (-(u64::max_value() as i128)).to_string()
+        );
+        assert_eq!(
+            Int::new_negative(&BigNum(u64::min_value())).to_str(),
+            (-(u64::min_value() as i128)).to_string()
+        );
         assert_eq!(Int::new_i32(142).to_str(), "142");
         assert_eq!(Int::new_i32(-142).to_str(), "-142");
     }
 
     #[test]
     fn int_as_i32_or_nothing() {
-
         let over_pos_i32 = (i32::max_value() as i64) + 1;
-        assert!(Int::new(&BigNum(over_pos_i32 as u64)).as_i32_or_nothing().is_none());
+        assert!(Int::new(&BigNum(over_pos_i32 as u64))
+            .as_i32_or_nothing()
+            .is_none());
 
         let valid_pos_i32 = i32::max_value() as i64;
-        assert_eq!(Int::new(&BigNum(valid_pos_i32 as u64)).as_i32_or_nothing().unwrap(), i32::max_value());
+        assert_eq!(
+            Int::new(&BigNum(valid_pos_i32 as u64))
+                .as_i32_or_nothing()
+                .unwrap(),
+            i32::max_value()
+        );
 
         let over_neg_i32 = (i32::min_value() as i64) - 1;
-        assert!(Int::new_negative(&BigNum((-over_neg_i32) as u64)).as_i32_or_nothing().is_none());
+        assert!(Int::new_negative(&BigNum((-over_neg_i32) as u64))
+            .as_i32_or_nothing()
+            .is_none());
 
         let valid_neg_i32 = i32::min_value() as i64;
-        assert_eq!(Int::new_negative(&BigNum((-valid_neg_i32) as u64)).as_i32_or_nothing().unwrap(), i32::min_value());
+        assert_eq!(
+            Int::new_negative(&BigNum((-valid_neg_i32) as u64))
+                .as_i32_or_nothing()
+                .unwrap(),
+            i32::min_value()
+        );
 
-        assert!(Int::new(&BigNum(u64::max_value())).as_i32_or_nothing().is_none());
-        assert_eq!(Int::new(&BigNum(i32::max_value() as u64)).as_i32_or_nothing().unwrap(), i32::max_value());
-        assert_eq!(Int::new_negative(&BigNum(i32::max_value() as u64)).as_i32_or_nothing().unwrap(), -i32::max_value());
+        assert!(Int::new(&BigNum(u64::max_value()))
+            .as_i32_or_nothing()
+            .is_none());
+        assert_eq!(
+            Int::new(&BigNum(i32::max_value() as u64))
+                .as_i32_or_nothing()
+                .unwrap(),
+            i32::max_value()
+        );
+        assert_eq!(
+            Int::new_negative(&BigNum(i32::max_value() as u64))
+                .as_i32_or_nothing()
+                .unwrap(),
+            -i32::max_value()
+        );
 
         assert_eq!(Int::new_i32(42).as_i32_or_nothing().unwrap(), 42);
         assert_eq!(Int::new_i32(-42).as_i32_or_nothing().unwrap(), -42);
@@ -2454,22 +2487,47 @@ mod tests {
 
     #[test]
     fn int_as_i32_or_fail() {
-
         let over_pos_i32 = (i32::max_value() as i64) + 1;
-        assert!(Int::new(&BigNum(over_pos_i32 as u64)).as_i32_or_fail().is_err());
+        assert!(Int::new(&BigNum(over_pos_i32 as u64))
+            .as_i32_or_fail()
+            .is_err());
 
         let valid_pos_i32 = i32::max_value() as i64;
-        assert_eq!(Int::new(&BigNum(valid_pos_i32 as u64)).as_i32_or_fail().unwrap(), i32::max_value());
+        assert_eq!(
+            Int::new(&BigNum(valid_pos_i32 as u64))
+                .as_i32_or_fail()
+                .unwrap(),
+            i32::max_value()
+        );
 
         let over_neg_i32 = (i32::min_value() as i64) - 1;
-        assert!(Int::new_negative(&BigNum((-over_neg_i32) as u64)).as_i32_or_fail().is_err());
+        assert!(Int::new_negative(&BigNum((-over_neg_i32) as u64))
+            .as_i32_or_fail()
+            .is_err());
 
         let valid_neg_i32 = i32::min_value() as i64;
-        assert_eq!(Int::new_negative(&BigNum((-valid_neg_i32) as u64)).as_i32_or_fail().unwrap(), i32::min_value());
+        assert_eq!(
+            Int::new_negative(&BigNum((-valid_neg_i32) as u64))
+                .as_i32_or_fail()
+                .unwrap(),
+            i32::min_value()
+        );
 
-        assert!(Int::new(&BigNum(u64::max_value())).as_i32_or_fail().is_err());
-        assert_eq!(Int::new(&BigNum(i32::max_value() as u64)).as_i32_or_fail().unwrap(), i32::max_value());
-        assert_eq!(Int::new_negative(&BigNum(i32::max_value() as u64)).as_i32_or_fail().unwrap(), -i32::max_value());
+        assert!(Int::new(&BigNum(u64::max_value()))
+            .as_i32_or_fail()
+            .is_err());
+        assert_eq!(
+            Int::new(&BigNum(i32::max_value() as u64))
+                .as_i32_or_fail()
+                .unwrap(),
+            i32::max_value()
+        );
+        assert_eq!(
+            Int::new_negative(&BigNum(i32::max_value() as u64))
+                .as_i32_or_fail()
+                .unwrap(),
+            -i32::max_value()
+        );
 
         assert_eq!(Int::new_i32(42).as_i32_or_fail().unwrap(), 42);
         assert_eq!(Int::new_i32(-42).as_i32_or_fail().unwrap(), -42);
