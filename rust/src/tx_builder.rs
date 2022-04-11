@@ -6,39 +6,86 @@ use crate::tx_builder_utils::*;
 use std::collections::{BTreeMap, BTreeSet};
 
 // comes from witsVKeyNeeded in the Ledger spec
-fn witness_keys_for_cert(cert_enum: &Certificate, keys: &mut BTreeSet<Ed25519KeyHash>) {
+fn witness_keys_for_cert(
+    tx_builder: &mut TransactionBuilder,
+    cert_enum: &Certificate,
+    script_witness: Option<ScriptWitness>,
+) {
     match &cert_enum.0 {
         // stake key registrations do not require a witness
         CertificateEnum::StakeRegistration(_cert) => {}
         CertificateEnum::StakeDeregistration(cert) => match cert.stake_credential().kind() {
             StakeCredKind::Script => {
-                //TODO
+                let sw = script_witness.unwrap();
+                let hash = cert.stake_credential().to_scripthash().unwrap();
+                match &sw.kind() {
+                    ScriptWitnessKind::NativeWitness => {
+                        let native_script = sw.as_native_witness().unwrap();
+                        if !tx_builder.input_types.scripts.contains(&hash) {
+                            tx_builder.add_native_script(&native_script);
+                            tx_builder.input_types.scripts.insert(hash.clone());
+                        }
+                    }
+                    ScriptWitnessKind::PlutusWitness => {
+                        let plutus_witness = sw.as_plutus_witness().unwrap();
+                        if !tx_builder.input_types.scripts.contains(&hash) {
+                            tx_builder.add_plutus_script(&plutus_witness.script());
+                            tx_builder.input_types.scripts.insert(hash.clone());
+                        }
+                    }
+                }
             }
             StakeCredKind::Key => {
-                keys.insert(cert.stake_credential().to_keyhash().unwrap());
+                tx_builder
+                    .input_types
+                    .vkeys
+                    .insert(cert.stake_credential().to_keyhash().unwrap());
             }
         },
         CertificateEnum::StakeDelegation(cert) => match cert.stake_credential().kind() {
             StakeCredKind::Script => {
-                //TODO
+                let sw = script_witness.unwrap();
+                let hash = cert.stake_credential().to_scripthash().unwrap();
+                match &sw.kind() {
+                    ScriptWitnessKind::NativeWitness => {
+                        let native_script = sw.as_native_witness().unwrap();
+                        if !tx_builder.input_types.scripts.contains(&hash) {
+                            tx_builder.add_native_script(&native_script);
+                            tx_builder.input_types.scripts.insert(hash.clone());
+                        }
+                    }
+                    ScriptWitnessKind::PlutusWitness => {
+                        let plutus_witness = sw.as_plutus_witness().unwrap();
+                        if !tx_builder.input_types.scripts.contains(&hash) {
+                            tx_builder.add_plutus_script(&plutus_witness.script());
+                            tx_builder.input_types.scripts.insert(hash.clone());
+                        }
+                    }
+                }
             }
             StakeCredKind::Key => {
-                keys.insert(cert.stake_credential().to_keyhash().unwrap());
+                tx_builder
+                    .input_types
+                    .vkeys
+                    .insert(cert.stake_credential().to_keyhash().unwrap());
             }
         },
         CertificateEnum::PoolRegistration(cert) => {
             for owner in &cert.pool_params().pool_owners().0 {
-                keys.insert(owner.clone());
+                tx_builder.input_types.vkeys.insert(owner.clone());
             }
-            keys.insert(
+            tx_builder.input_types.vkeys.insert(
                 Ed25519KeyHash::from_bytes(cert.pool_params().operator().to_bytes()).unwrap(),
             );
         }
         CertificateEnum::PoolRetirement(cert) => {
-            keys.insert(Ed25519KeyHash::from_bytes(cert.pool_keyhash().to_bytes()).unwrap());
+            tx_builder
+                .input_types
+                .vkeys
+                .insert(Ed25519KeyHash::from_bytes(cert.pool_keyhash().to_bytes()).unwrap());
         }
         CertificateEnum::GenesisKeyDelegation(cert) => {
-            keys.insert(
+            tx_builder.input_types.vkeys.insert(
                 Ed25519KeyHash::from_bytes(cert.genesis_delegate_hash().to_bytes()).unwrap(),
             );
         }
@@ -191,6 +238,19 @@ struct TxBuilderInput {
 struct TxBuilderMint {
     policy_id: PolicyID,
     mint_assets: MintAssets,
+    redeemer: Option<Redeemer>, // we need to keep track of the redeemer index
+}
+
+#[derive(Clone, Debug)]
+struct TxBuilderCert {
+    certificate: Certificate,
+    redeemer: Option<Redeemer>, // we need to keep track of the redeemer index
+}
+
+#[derive(Clone, Debug)]
+struct TxBuilderWithdrawal {
+    reward_address: RewardAddress,
+    coin: Coin,
     redeemer: Option<Redeemer>, // we need to keep track of the redeemer index
 }
 
@@ -361,8 +421,8 @@ pub struct TransactionBuilder {
     change_outputs: TransactionOutputs,
     fee: Option<Coin>,
     ttl: Option<Slot>, // absolute slot number
-    certs: Option<Certificates>,
-    withdrawals: Option<Withdrawals>,
+    certs: Option<Vec<TxBuilderCert>>,
+    withdrawals: Option<Vec<TxBuilderWithdrawal>>,
     auxiliary_data: Option<AuxiliaryData>,
     validity_start_interval: Option<Slot>,
     input_types: MockWitnessSet,
@@ -958,6 +1018,39 @@ impl TransactionBuilder {
         self.native_scripts = Some(scripts);
     }
 
+    /// Add certificate via a Certificates object
+    pub fn add_certificate(
+        &mut self,
+        certificate: &Certificate,
+        script_witness: Option<ScriptWitness>,
+    ) {
+        let redeemer = match &script_witness {
+            Some(sw) => match sw.kind() {
+                ScriptWitnessKind::NativeWitness => None,
+                ScriptWitnessKind::PlutusWitness => {
+                    let plutus_witness = sw.as_plutus_witness().unwrap();
+                    Some(Redeemer::new(
+                        &RedeemerTag::new_cert(),
+                        &to_bignum(0), // will point to correct input when finalizing txBuilder
+                        &plutus_witness.redeemer(),
+                        &ExUnits::new(&to_bignum(0), &to_bignum(0)), // correct ex units calculated at the end
+                    ))
+                }
+            },
+            None => None,
+        };
+
+        let mut cert_array = self.certs.clone().unwrap_or(Vec::new());
+
+        cert_array.push(TxBuilderCert {
+            certificate: certificate.clone(),
+            redeemer: redeemer,
+        });
+        self.certs = Some(cert_array.clone());
+
+        witness_keys_for_cert(self, certificate, script_witness);
+    }
+
     /// calculates how much the fee would increase if you added a given output
     pub fn fee_for_output(&self, output: &TransactionOutput) -> Result<Coin, JsError> {
         let mut self_copy = self.clone();
@@ -986,20 +1079,55 @@ impl TransactionBuilder {
         self.validity_start_interval = Some(validity_start_interval.clone())
     }
 
-    pub fn set_certs(&mut self, certs: &Certificates) {
-        self.certs = Some(certs.clone());
-        for cert in &certs.0 {
-            witness_keys_for_cert(cert, &mut self.input_types.vkeys);
-        }
-    }
+    pub fn add_withdrawal(
+        &mut self,
+        reward_address: &RewardAddress,
+        coin: &Coin,
+        script_witness: Option<ScriptWitness>,
+    ) {
+        let redeemer = match reward_address.payment_cred().kind() {
+            StakeCredKind::Key => {
+                let key = reward_address.payment_cred().to_keyhash().unwrap().clone();
+                self.input_types.vkeys.insert(key);
+                None
+            }
+            StakeCredKind::Script => {
+                let hash = reward_address
+                    .payment_cred()
+                    .to_scripthash()
+                    .unwrap()
+                    .clone();
+                let sw = script_witness.unwrap();
+                match sw.kind() {
+                    ScriptWitnessKind::NativeWitness => {
+                        let native_script = sw.as_native_witness().unwrap();
+                        if !self.input_types.scripts.contains(&hash) {
+                            self.add_native_script(&native_script);
+                            self.input_types.scripts.insert(hash.clone());
+                        }
+                        None
+                    }
+                    ScriptWitnessKind::PlutusWitness => {
+                        let plutus_witness = sw.as_plutus_witness().unwrap();
+                        Some(Redeemer::new(
+                            &RedeemerTag::new_reward(),
+                            &to_bignum(0), // will point to correct input when finalizing txBuilder
+                            &plutus_witness.redeemer(),
+                            &ExUnits::new(&to_bignum(0), &to_bignum(0)), // correct ex units calculated at the end
+                        ))
+                    }
+                }
+            }
+        };
 
-    pub fn set_withdrawals(&mut self, withdrawals: &Withdrawals) {
-        self.withdrawals = Some(withdrawals.clone());
-        for (withdrawal, _coin) in &withdrawals.0 {
-            self.input_types
-                .vkeys
-                .insert(withdrawal.payment_cred().to_keyhash().unwrap().clone());
-        }
+        let mut withdrawal_array = self.withdrawals.clone().unwrap_or(Vec::new());
+
+        withdrawal_array.push(TxBuilderWithdrawal {
+            reward_address: reward_address.clone(),
+            coin: coin.clone(),
+            redeemer: redeemer,
+        });
+        self.withdrawals = Some(withdrawal_array.clone());
     }
 
     pub fn auxiliary_data(&self) -> Option<AuxiliaryData> {
@@ -1066,6 +1194,14 @@ impl TransactionBuilder {
         self.mint_array_to_mint()
     }
 
+    pub fn certificates(&self) -> Option<Certificates> {
+        self.cert_array_to_certificates()
+    }
+
+    pub fn withdrawals(&self) -> Option<Withdrawals> {
+        self.withdrawals_array_to_withdrawals()
+    }
+
     /// Returns a copy of the current witness native scripts in the builder
     pub fn native_scripts(&self) -> Option<NativeScripts> {
         self.native_scripts.clone()
@@ -1098,7 +1234,7 @@ impl TransactionBuilder {
                     self.input_types.scripts.insert(policy_id.clone());
                 }
                 Some(Redeemer::new(
-                    &RedeemerTag::new_spend(),
+                    &RedeemerTag::new_mint(),
                     &to_bignum(0), // will point to correct input when finalizing txBuilder
                     &plutus_witness.redeemer(),
                     &ExUnits::new(&to_bignum(0), &to_bignum(0)), // correct ex units calculated at the end
@@ -1232,10 +1368,6 @@ impl TransactionBuilder {
         }
     }
 
-    fn set_redeemers(&mut self, redeemers: &Redeemers) {
-        self.redeemers = Some(redeemers.clone())
-    }
-
     pub fn collateral(&self) -> Option<TransactionInputs> {
         self.collateral.clone()
     }
@@ -1268,8 +1400,8 @@ impl TransactionBuilder {
     /// withdrawals and refunds
     pub fn get_implicit_input(&self) -> Result<Value, JsError> {
         internal_get_implicit_input(
-            &self.withdrawals,
-            &self.certs,
+            &self.withdrawals(),
+            &self.certificates(),
             &self.config.pool_deposit,
             &self.config.key_deposit,
         )
@@ -1284,6 +1416,34 @@ impl TransactionBuilder {
                     collected_mint.insert(&m.policy_id, &m.mint_assets);
                 }
                 Some(collected_mint)
+            }
+            None => None,
+        }
+    }
+
+    fn cert_array_to_certificates(&self) -> Option<Certificates> {
+        match &self.certs {
+            Some(tx_builder_certs) => {
+                let mut collected_certs = Certificates::new();
+
+                for cert in tx_builder_certs.iter() {
+                    collected_certs.add(&cert.certificate);
+                }
+                Some(collected_certs)
+            }
+            None => None,
+        }
+    }
+
+    fn withdrawals_array_to_withdrawals(&self) -> Option<Withdrawals> {
+        match &self.withdrawals {
+            Some(tx_builder_withdrawals) => {
+                let mut collected_withdrawals = Withdrawals::new();
+
+                for m in tx_builder_withdrawals.iter() {
+                    collected_withdrawals.insert(&m.reward_address, &m.coin);
+                }
+                Some(collected_withdrawals)
             }
             None => None,
         }
@@ -1324,7 +1484,7 @@ impl TransactionBuilder {
 
     pub fn get_deposit(&self) -> Result<Coin, JsError> {
         internal_get_deposit(
-            &self.certs,
+            &self.certificates(),
             &self.config.pool_deposit,
             &self.config.key_deposit,
         )
@@ -1334,7 +1494,7 @@ impl TransactionBuilder {
         self.fee.clone()
     }
 
-    fn index_of_input(&self, input: &TransactionInput) -> BigNum {
+    fn get_lexical_order_inputs(&self) -> Vec<TransactionInput> {
         let mut inputs = self
             .inputs
             .iter()
@@ -1347,14 +1507,14 @@ impl TransactionBuilder {
             )
             .collect::<Vec<TransactionInput>>();
         inputs.sort();
-        to_bignum(inputs.iter().position(|i| i == input).unwrap() as u64)
+        inputs
     }
 
-    fn index_of_policy_id(&self, policy_id: &PolicyID) -> BigNum {
+    fn get_lexical_order_policy_ids(&self) -> Vec<PolicyID> {
         let mut policy_ids = self
             .mint
             .as_ref()
-            .unwrap()
+            .unwrap_or(Vec::new().as_ref())
             .iter()
             .map(
                 |TxBuilderMint {
@@ -1365,7 +1525,41 @@ impl TransactionBuilder {
             )
             .collect::<Vec<ScriptHash>>();
         policy_ids.sort();
-        to_bignum(policy_ids.iter().position(|i| i == policy_id).unwrap() as u64)
+        policy_ids
+    }
+
+    fn get_tx_order_certificates(&self) -> Vec<Certificate> {
+        let certificates = self
+            .certs
+            .as_ref()
+            .unwrap_or(Vec::new().as_ref())
+            .iter()
+            .map(
+                |TxBuilderCert {
+                     certificate,
+                     redeemer: _,
+                 }| certificate.clone(),
+            )
+            .collect::<Vec<Certificate>>();
+        certificates
+    }
+
+    fn get_lexical_order_withdrawals(&self) -> Vec<RewardAddress> {
+        let mut withdrawals = self
+            .withdrawals
+            .as_ref()
+            .unwrap_or(Vec::new().as_ref())
+            .iter()
+            .map(
+                |TxBuilderWithdrawal {
+                     reward_address,
+                     coin: _,
+                     redeemer: _,
+                 }| reward_address.clone(),
+            )
+            .collect::<Vec<RewardAddress>>();
+        withdrawals.sort();
+        withdrawals
     }
 
     /// Warning: this function will mutate the /fee/ field
@@ -1684,8 +1878,6 @@ impl TransactionBuilder {
             total_outputs.add(&change_output);
         }
 
-        let mint = self.mint_array_to_mint();
-
         let built = TransactionBody {
             inputs: TransactionInputs(
                 self.inputs
@@ -1696,15 +1888,15 @@ impl TransactionBuilder {
             outputs: total_outputs,
             fee: fee,
             ttl: self.ttl,
-            certs: self.certs.clone(),
-            withdrawals: self.withdrawals.clone(),
+            certs: self.certificates(),
+            withdrawals: self.withdrawals(),
             update: None,
             auxiliary_data_hash: match &self.auxiliary_data {
                 None => None,
                 Some(x) => Some(utils::hash_auxiliary_data(x)),
             },
             validity_start_interval: self.validity_start_interval,
-            mint: mint.clone(),
+            mint: self.mint_array_to_mint(),
             script_data_hash: match self.redeemers.is_some() || self.plutus_data.is_some() {
                 false => None,
                 true => Some(utils::hash_script_data(
@@ -1763,9 +1955,15 @@ impl TransactionBuilder {
     fn collect_redeemers(&mut self) -> Option<Redeemers> {
         let mut collected_redeemers = Redeemers::new();
 
+        let lexical_order_inputs = self.get_lexical_order_inputs();
         for input in &self.inputs {
             if let Some(redeemer) = &input.redeemer {
-                let index = self.index_of_input(&input.input);
+                let index = to_bignum(
+                    lexical_order_inputs
+                        .iter()
+                        .position(|i| *i == input.input)
+                        .unwrap() as u64,
+                );
                 let new_redeemer = Redeemer::new(
                     &redeemer.tag(),
                     &index,
@@ -1776,9 +1974,53 @@ impl TransactionBuilder {
             }
         }
 
+        let lexical_order_policy_id = self.get_lexical_order_policy_ids();
         for m in self.mint.as_ref().unwrap_or(&Vec::new()) {
             if let Some(redeemer) = &m.redeemer {
-                let index = self.index_of_policy_id(&m.policy_id);
+                let index = to_bignum(
+                    lexical_order_policy_id
+                        .iter()
+                        .position(|policy_id| *policy_id == m.policy_id)
+                        .unwrap() as u64,
+                );
+                let new_redeemer = Redeemer::new(
+                    &redeemer.tag(),
+                    &index,
+                    &redeemer.data(),
+                    &redeemer.ex_units(),
+                );
+                collected_redeemers.add(&new_redeemer);
+            }
+        }
+
+        let tx_order_certificates = self.get_tx_order_certificates();
+        for cert in self.certs.as_ref().unwrap_or(&Vec::new()) {
+            if let Some(redeemer) = &cert.redeemer {
+                let index = to_bignum(
+                    tx_order_certificates
+                        .iter()
+                        .position(|c| *c == cert.certificate)
+                        .unwrap() as u64,
+                );
+                let new_redeemer = Redeemer::new(
+                    &redeemer.tag(),
+                    &index,
+                    &redeemer.data(),
+                    &redeemer.ex_units(),
+                );
+                collected_redeemers.add(&new_redeemer);
+            }
+        }
+
+        let lexical_order_withdrawals = self.get_lexical_order_withdrawals();
+        for w in self.withdrawals.as_ref().unwrap_or(&Vec::new()) {
+            if let Some(redeemer) = &w.redeemer {
+                let index = to_bignum(
+                    lexical_order_withdrawals
+                        .iter()
+                        .position(|reward_address| *reward_address == w.reward_address)
+                        .unwrap() as u64,
+                );
                 let new_redeemer = Redeemer::new(
                     &redeemer.tag(),
                     &index,
@@ -2311,15 +2553,17 @@ mod tests {
         );
         tx_builder.set_ttl(&1000.into());
 
-        let mut certs = Certificates::new();
-        certs.add(&Certificate::new_stake_registration(
-            &StakeRegistration::new(&stake_cred),
-        ));
-        certs.add(&Certificate::new_stake_delegation(&StakeDelegation::new(
-            &stake_cred,
-            &stake.to_raw_key().hash(), // in reality, this should be the pool owner's key, not ours
-        )));
-        tx_builder.set_certs(&certs);
+        tx_builder.add_certificate(
+            &Certificate::new_stake_registration(&StakeRegistration::new(&stake_cred)),
+            None,
+        );
+        tx_builder.add_certificate(
+            &Certificate::new_stake_delegation(&StakeDelegation::new(
+                &stake_cred,
+                &stake.to_raw_key().hash(), // in reality, this should be the pool owner's key, not ours
+            )),
+            None,
+        );
 
         let change_cred = StakeCredential::from_keyhash(&change_key.to_raw_key().hash());
         let change_addr = BaseAddress::new(
@@ -2544,11 +2788,10 @@ mod tests {
         tx_builder.set_ttl(&0.into());
 
         // add a cert which requires a deposit
-        let mut certs = Certificates::new();
-        certs.add(&Certificate::new_stake_registration(
-            &StakeRegistration::new(&stake_cred),
-        ));
-        tx_builder.set_certs(&certs);
+        tx_builder.add_certificate(
+            &Certificate::new_stake_registration(&StakeRegistration::new(&stake_cred)),
+            None,
+        );
 
         let change_cred = StakeCredential::from_keyhash(&change_key.to_raw_key().hash());
         let change_addr = BaseAddress::new(
