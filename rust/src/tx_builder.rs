@@ -189,7 +189,6 @@ fn fake_full_tx(
         vkeys,
         native_scripts: tx_builder.native_scripts.clone(),
         bootstraps: bootstrap_keys,
-        // TODO: plutus support?
         plutus_scripts: tx_builder.plutus_scripts.clone(),
         plutus_data: tx_builder.plutus_data.clone(),
         redeemers: tx_builder.redeemers.clone(),
@@ -939,7 +938,7 @@ impl TransactionBuilder {
         }
         let min_ada = min_ada_required(
             &output.amount(),
-            output.data_hash.is_some(),
+            output.data_hash.is_some() || datum.is_some(),
             &self.config.coins_per_utxo_word,
         )?;
         if output.amount().coin() < min_ada {
@@ -952,7 +951,9 @@ impl TransactionBuilder {
             let new_output = &mut output.clone();
             if let Some(d) = &datum {
                 self.add_plutus_data(&d);
-                new_output.set_data_hash(&hash_plutus_data(&d));
+                if output.data_hash.is_none() {
+                    new_output.set_data_hash(&hash_plutus_data(&d));
+                }
             }
             self.outputs.add(new_output);
             Ok(())
@@ -1372,8 +1373,13 @@ impl TransactionBuilder {
         self.collateral.clone()
     }
 
-    pub fn set_required_signers(&mut self, required_signers: RequiredSigners) {
-        self.required_signers = Some(required_signers)
+    pub fn add_required_signer(&mut self, required_signer: &Ed25519KeyHash) {
+        if self.required_signers.is_none() {
+            self.required_signers = Some(Ed25519KeyHashes::new());
+        }
+        let mut required_signers = self.required_signers.clone().unwrap();
+        required_signers.add(&required_signer.clone());
+        self.required_signers = Some(required_signers);
     }
 
     pub fn required_signers(&self) -> Option<RequiredSigners> {
@@ -1908,6 +1914,10 @@ impl TransactionBuilder {
             collateral: self.collateral.clone(),
             required_signers: self.required_signers.clone(),
             network_id: self.network_id.clone(),
+            // TODO: babbage support
+            collateral_return: None,
+            total_collateral: None,
+            reference_inputs: None,
         };
         // we must build a tx with fake data (of correct size) to check the final Transaction size
         let full_tx = fake_full_tx(self, built)?;

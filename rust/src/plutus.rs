@@ -836,6 +836,57 @@ pub enum PlutusDatumSchema {
     DetailedSchema,
 }
 
+// #[wasm_bindgen]
+// #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+// pub struct Data(Vec<u8>);
+
+// #[derive(
+//     Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize, JsonSchema,
+// )]
+// pub enum DatumEnum {
+//     Hash(DataHash),
+//     Data(PlutusData),
+// }
+
+// #[wasm_bindgen]
+// #[derive(
+//     Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize, JsonSchema,
+// )]
+// pub struct Datum(DatumEnum);
+
+// to_from_json!(Datum);
+
+// #[wasm_bindgen]
+// impl Datum {
+//     pub fn new_data_hash(native_script: &NativeScript) -> Self {
+//         Self(ScriptWitnessEnum::NativeWitness(native_script.clone()))
+//     }
+//     pub fn new_plutus_data(plutus_witness: &PlutusWitness) -> Self {
+//         Self(ScriptWitnessEnum::PlutusWitness(plutus_witness.clone()))
+//     }
+
+//     pub fn kind(&self) -> ScriptWitnessKind {
+//         match &self.0 {
+//             ScriptWitnessEnum::NativeWitness(_) => ScriptWitnessKind::NativeWitness,
+//             ScriptWitnessEnum::PlutusWitness(_) => ScriptWitnessKind::PlutusWitness,
+//         }
+//     }
+
+//     pub fn as_native_witness(&self) -> Option<NativeScript> {
+//         match &self.0 {
+//             ScriptWitnessEnum::NativeWitness(native_script) => Some(native_script.clone()),
+//             _ => None,
+//         }
+//     }
+
+//     pub fn as_plutus_witness(&self) -> Option<PlutusWitness> {
+//         match &self.0 {
+//             ScriptWitnessEnum::PlutusWitness(plutus_witness) => Some(plutus_witness.clone()),
+//             _ => None,
+//         }
+//     }
+// }
+
 #[wasm_bindgen]
 pub fn encode_json_str_to_plutus_datum(
     json: &str,

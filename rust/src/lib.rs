@@ -263,6 +263,10 @@ pub struct TransactionBody {
     collateral: Option<TransactionInputs>,
     required_signers: Option<RequiredSigners>,
     network_id: Option<NetworkId>,
+    //TODO: babbage
+    collateral_return: Option<TransactionOutput>,
+    total_collateral: Option<Coin>,
+    reference_inputs: Option<TransactionInputs>,
 }
 
 to_from_bytes!(TransactionBody);
@@ -374,6 +378,30 @@ impl TransactionBody {
         self.network_id.clone()
     }
 
+    pub fn set_collateral_return(&mut self, collateral_return: &TransactionOutput) {
+        self.collateral_return = Some(collateral_return.clone())
+    }
+
+    pub fn collateral_return(&self) -> Option<TransactionOutput> {
+        self.collateral_return.clone()
+    }
+
+    pub fn set_total_collateral(&mut self, total_collateral: &Coin) {
+        self.total_collateral = Some(total_collateral.clone())
+    }
+
+    pub fn total_collateral(&self) -> Option<Coin> {
+        self.total_collateral.clone()
+    }
+
+    pub fn set_reference_inputs(&mut self, reference_inputs: &TransactionInputs) {
+        self.reference_inputs = Some(reference_inputs.clone())
+    }
+
+    pub fn reference_inputs(&self) -> Option<TransactionInputs> {
+        self.reference_inputs.clone()
+    }
+
     pub fn new(
         inputs: &TransactionInputs,
         outputs: &TransactionOutputs,
@@ -395,6 +423,9 @@ impl TransactionBody {
             collateral: None,
             required_signers: None,
             network_id: None,
+            collateral_return: None,
+            total_collateral: None,
+            reference_inputs: None,
         }
     }
 }
