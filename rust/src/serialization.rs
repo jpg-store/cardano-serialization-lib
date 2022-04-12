@@ -758,42 +758,63 @@ impl cbor_event::se::Serialize for TransactionOutput {
         &self,
         serializer: &'se mut Serializer<W>,
     ) -> cbor_event::Result<&'se mut Serializer<W>> {
-        serializer.write_array(cbor_event::Len::Len(if self.data_hash.is_some() {
+        serializer.write_array(cbor_event::Len::Len(if self.datum.is_some() {
             3
         } else {
             2
         }))?;
         self.address.serialize(serializer)?;
         self.amount.serialize(serializer)?;
-        if let Some(data_hash) = &self.data_hash {
+        if let Some(data_hash) = self.datum.as_ref().and_then(|datum| datum.as_data_hash()) {
             data_hash.serialize(serializer)?;
         }
         Ok(serializer)
     }
 }
 
+// post alonzo
+// TODO ENABLE after Babbage
+// impl cbor_event::se::Serialize for TransactionOutput {
+//     fn serialize<'se, W: Write>(
+//         &self,
+//         serializer: &'se mut Serializer<W>,
+//     ) -> cbor_event::Result<&'se mut Serializer<W>> {
+//         serializer.write_map(cbor_event::Len::Len(
+//             2 + match &self.datum {
+//                 Some(_) => 1,
+//                 None => 0,
+//             } + match &self.script_ref {
+//                 Some(_) => 1,
+//                 None => 0,
+//             },
+//         ))?;
+
+//         serializer.write_unsigned_integer(0)?;
+//         self.address.serialize(serializer)?;
+
+//         serializer.write_unsigned_integer(1)?;
+//         self.amount.serialize(serializer)?;
+
+//         if let Some(datum) = &self.datum {
+//             serializer.write_unsigned_integer(2)?;
+//             datum.serialize(serializer)?;
+//         }
+
+//         if let Some(script_ref) = &self.script_ref {
+//             serializer.write_unsigned_integer(3)?;
+//             script_ref.serialize(serializer)?;
+//         }
+
+//         Ok(serializer)
+//     }
+// }
+
 // this is used when deserializing it on its own, but the more likely case
 // is when it's done via TransactionOutputs
 impl Deserialize for TransactionOutput {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
-            let len = raw.array()?;
-            let ret = Self::deserialize_as_embedded_group(raw, len);
-            match len {
-                cbor_event::Len::Len(_) =>
-                /* TODO: check finite len somewhere */
-                {
-                    ()
-                }
-                cbor_event::Len::Indefinite => match raw.special()? {
-                    CBORSpecial::Break =>
-                    /* it's ok */
-                    {
-                        ()
-                    }
-                    _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
-                },
-            }
+            let ret = Self::deserialize_as_embedded_group(raw, cbor_event::Len::Len(0)); // length has no effect
             ret
         })()
         .map_err(|e| e.annotate("TransactionOutput"))
@@ -810,40 +831,191 @@ impl DeserializeEmbeddedGroup for TransactionOutput {
         raw: &mut Deserializer<R>,
         _: cbor_event::Len,
     ) -> Result<Self, DeserializeError> {
-        let address = (|| -> Result<_, DeserializeError> { Ok(Address::deserialize(raw)?) })()
-            .map_err(|e| e.annotate("address"))?;
-        let amount = (|| -> Result<_, DeserializeError> { Ok(Value::deserialize(raw)?) })()
-            .map_err(|e| e.annotate("amount"))?;
-        // there are only two cases so far where this is used:
-        // 1) on its own inside of TransactionOutput's Deserialize trait (only used if someone calls to_bytes() on it)
-        // 2) from TransactionOutput's deserialization
-        // in 1) we would encounter an array-end (or track it for definite deserialization - which we don't do right now)
-        // and in 2) we would encounter the same OR we would encounter the next TransactionOutput in the array
-        // Unfortunately, both address and data hash are bytes type, so we can't just check the type, but instead
-        // must check the length, and backtrack if that wasn't the case.
-        let data_hash = match raw.cbor_type() {
-            Ok(cbor_event::Type::Bytes) => {
-                let initial_position = raw.as_mut_ref().seek(SeekFrom::Current(0)).unwrap();
-                let bytes = raw.bytes().unwrap();
-                if bytes.len() == DataHash::BYTE_COUNT {
-                    Some(DataHash(bytes[..DataHash::BYTE_COUNT].try_into().unwrap()))
-                } else {
-                    // This is an address of the next output in sequence, which luckily is > 32 bytes so there's no confusion
-                    // Go to previous place in array then carry on
-                    raw.as_mut_ref().seek(SeekFrom::Start(initial_position)).unwrap();
-                    None
+        let len: cbor_event::Len;
+        let result = match raw.cbor_type()? {
+            cbor_event::Type::Array => {
+                len = raw.array()?;
+                let address =
+                    (|| -> Result<_, DeserializeError> { Ok(Address::deserialize(raw)?) })()
+                        .map_err(|e| e.annotate("address"))?;
+                let amount = (|| -> Result<_, DeserializeError> { Ok(Value::deserialize(raw)?) })()
+                    .map_err(|e| e.annotate("amount"))?;
+                // there are only two cases so far where this is used:
+                // 1) on its own inside of TransactionOutput's Deserialize trait (only used if someone calls to_bytes() on it)
+                // 2) from TransactionOutput's deserialization
+                // in 1) we would encounter an array-end (or track it for definite deserialization - which we don't do right now)
+                // and in 2) we would encounter the same OR we would encounter the next TransactionOutput in the array
+                // Unfortunately, both address and data hash are bytes type, so we can't just check the type, but instead
+                // must check the length, and backtrack if that wasn't the case.
+                let data_hash = match raw.cbor_type() {
+                Ok(cbor_event::Type::Bytes) => {
+                    let initial_position = raw.as_mut_ref().seek(SeekFrom::Current(0)).unwrap();
+                    let bytes = raw.bytes().unwrap();
+                    if bytes.len() == DataHash::BYTE_COUNT {
+                        Some(DataHash(bytes[..DataHash::BYTE_COUNT].try_into().unwrap()))
+                    } else {
+                        // This is an address of the next output in sequence, which luckily is > 32 bytes so there's no confusion
+                        // Go to previous place in array then carry on
+                        raw.as_mut_ref().seek(SeekFrom::Start(initial_position)).unwrap();
+                        None
+                    }
+                },
+                // not possibly a data hash
+                Ok(_) |
+                // end of input
+                Err(_) => None,
+            };
+                Ok(TransactionOutput {
+                    address,
+                    amount,
+                    datum: match data_hash {
+                        Some(h) => Some(Datum::new_data_hash(&h)),
+                        None => None,
+                    },
+                    script_ref: None,
+                })
+            }
+            cbor_event::Type::Map => {
+                // post alonzo transaction output format
+                len = raw.map()?;
+                let mut read_len = CBORReadLen::new(len.clone());
+                read_len.read_elems(2)?;
+                let mut read = 0;
+
+                let mut address = None;
+                let mut amount = None;
+                let mut datum = None;
+                let mut script_ref = None;
+
+                while match len {
+                    cbor_event::Len::Len(n) => read < n as usize,
+                    cbor_event::Len::Indefinite => true,
+                } {
+                    match raw.cbor_type()? {
+                        CBORType::UnsignedInteger => match raw.unsigned_integer()? {
+                            0 => {
+                                if address.is_some() {
+                                    return Err(
+                                        DeserializeFailure::DuplicateKey(Key::Uint(0)).into()
+                                    );
+                                }
+                                address = Some(
+                                    (|| -> Result<_, DeserializeError> {
+                                        Ok(Address::deserialize(raw)?)
+                                    })()
+                                    .map_err(|e| e.annotate("address"))?,
+                                );
+                            }
+                            1 => {
+                                if amount.is_some() {
+                                    return Err(
+                                        DeserializeFailure::DuplicateKey(Key::Uint(0)).into()
+                                    );
+                                }
+                                amount = Some(
+                                    (|| -> Result<_, DeserializeError> {
+                                        Ok(Value::deserialize(raw)?)
+                                    })()
+                                    .map_err(|e| e.annotate("amount"))?,
+                                );
+                            }
+                            2 => {
+                                if datum.is_some() {
+                                    return Err(
+                                        DeserializeFailure::DuplicateKey(Key::Uint(0)).into()
+                                    );
+                                }
+                                datum = Some(
+                                    (|| -> Result<_, DeserializeError> {
+                                        Ok(Datum::deserialize(raw)?)
+                                    })()
+                                    .map_err(|e| e.annotate("datum"))?,
+                                );
+                            }
+                            3 => {
+                                if script_ref.is_some() {
+                                    return Err(
+                                        DeserializeFailure::DuplicateKey(Key::Uint(0)).into()
+                                    );
+                                }
+                                script_ref = Some(
+                                    (|| -> Result<_, DeserializeError> {
+                                        Ok(ScriptRef::deserialize(raw)?)
+                                    })()
+                                    .map_err(|e| e.annotate("script_ref"))?,
+                                );
+                            }
+                            unknown_key => {
+                                return Err(
+                                    DeserializeFailure::UnknownKey(Key::Uint(unknown_key)).into()
+                                )
+                            }
+                        },
+                        CBORType::Text => match raw.text()?.as_str() {
+                            unknown_key => {
+                                return Err(DeserializeFailure::UnknownKey(Key::Str(
+                                    unknown_key.to_owned(),
+                                ))
+                                .into())
+                            }
+                        },
+                        CBORType::Special => match len {
+                            cbor_event::Len::Len(_) => {
+                                return Err(DeserializeFailure::BreakInDefiniteLen.into())
+                            }
+                            cbor_event::Len::Indefinite => match raw.special()? {
+                                CBORSpecial::Break => break,
+                                _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+                            },
+                        },
+                        other_type => {
+                            return Err(DeserializeFailure::UnexpectedKeyType(other_type).into())
+                        }
+                    }
+                    read += 1;
                 }
-            },
-            // not possibly a data hash
-            Ok(_) |
-            // end of input
-            Err(_) => None,
+
+                let address = match address {
+                    Some(x) => x,
+                    None => {
+                        return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(0)).into())
+                    }
+                };
+                let amount = match amount {
+                    Some(x) => x,
+                    None => {
+                        return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(1)).into())
+                    }
+                };
+                read_len.finish()?;
+
+                Ok(TransactionOutput {
+                    address,
+                    amount,
+                    datum: datum,
+                    script_ref: script_ref,
+                })
+            }
+            _ => return Err(DeserializeFailure::NoVariantMatched.into()),
         };
-        Ok(TransactionOutput {
-            address,
-            amount,
-            data_hash,
-        })
+
+        match len {
+            cbor_event::Len::Len(_) =>
+            /* TODO: check finite len somewhere */
+            {
+                ()
+            }
+            cbor_event::Len::Indefinite => match raw.special()? {
+                CBORSpecial::Break =>
+                /* it's ok */
+                {
+                    ()
+                }
+                _ => return Err(DeserializeFailure::EndingBreakMissing.into()),
+            },
+        }
+
+        result
     }
 }
 
@@ -4667,10 +4839,13 @@ mod tests {
         let txo = TransactionOutput {
             address: addr.clone(),
             amount: val.clone(),
-            data_hash: None,
+            datum: None,
+            script_ref: None,
         };
         let mut txo_dh = txo.clone();
-        txo_dh.set_data_hash(&DataHash::from([47u8; DataHash::BYTE_COUNT]));
+        txo_dh.set_datum(&Datum::new_data_hash(&DataHash::from(
+            [47u8; DataHash::BYTE_COUNT],
+        )));
         txos.add(&txo);
         txos.add(&txo_dh);
         txos.add(&txo_dh);

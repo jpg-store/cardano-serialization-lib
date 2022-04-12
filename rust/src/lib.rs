@@ -468,13 +468,17 @@ impl TransactionInput {
 pub struct TransactionOutput {
     address: Address,
     pub(crate) amount: Value,
-    data_hash: Option<DataHash>,
+    datum: Option<Datum>,
+    script_ref: Option<ScriptRef>,
 }
 
 to_from_bytes!(TransactionOutput);
 
 to_from_json!(TransactionOutput);
 
+// Preliminary work for Babbage
+// script_ref not available yet in Alonzo
+// Only data hash can be used inside Datum for now
 #[wasm_bindgen]
 impl TransactionOutput {
     pub fn address(&self) -> Address {
@@ -485,19 +489,28 @@ impl TransactionOutput {
         self.amount.clone()
     }
 
-    pub fn data_hash(&self) -> Option<DataHash> {
-        self.data_hash.clone()
+    pub fn datum(&self) -> Option<Datum> {
+        self.datum.clone()
     }
 
-    pub fn set_data_hash(&mut self, data_hash: &DataHash) {
-        self.data_hash = Some(data_hash.clone());
+    pub fn script_ref(&self) -> Option<ScriptRef> {
+        self.script_ref.clone()
+    }
+
+    pub fn set_datum(&mut self, datum: &Datum) {
+        self.datum = Some(datum.clone());
+    }
+
+    pub fn set_script_ref(&mut self, script_ref: &ScriptRef) {
+        self.script_ref = Some(script_ref.clone());
     }
 
     pub fn new(address: &Address, amount: &Value) -> Self {
         Self {
             address: address.clone(),
             amount: amount.clone(),
-            data_hash: None,
+            datum: None,
+            script_ref: None,
         }
     }
 }

@@ -28,8 +28,10 @@ fn witness_keys_for_cert(
                     }
                     ScriptWitnessKind::PlutusWitness => {
                         let plutus_witness = sw.as_plutus_witness().unwrap();
-                        if !tx_builder.input_types.scripts.contains(&hash) {
-                            tx_builder.add_plutus_script(&plutus_witness.script());
+                        if !tx_builder.input_types.scripts.contains(&hash)
+                            && plutus_witness.script().is_some()
+                        {
+                            tx_builder.add_plutus_script(&plutus_witness.script().unwrap());
                             tx_builder.input_types.scripts.insert(hash.clone());
                         }
                     }
@@ -56,8 +58,10 @@ fn witness_keys_for_cert(
                     }
                     ScriptWitnessKind::PlutusWitness => {
                         let plutus_witness = sw.as_plutus_witness().unwrap();
-                        if !tx_builder.input_types.scripts.contains(&hash) {
-                            tx_builder.add_plutus_script(&plutus_witness.script());
+                        if !tx_builder.input_types.scripts.contains(&hash)
+                            && plutus_witness.script().is_some()
+                        {
+                            tx_builder.add_plutus_script(&plutus_witness.script().unwrap());
                             tx_builder.input_types.scripts.insert(hash.clone());
                         }
                     }
@@ -808,8 +812,8 @@ impl TransactionBuilder {
             }
             ScriptWitnessKind::PlutusWitness => {
                 let plutus_witness = script_witness.as_plutus_witness().unwrap();
-                if !self.input_types.scripts.contains(hash) {
-                    self.add_plutus_script(&plutus_witness.script());
+                if !self.input_types.scripts.contains(hash) && plutus_witness.script().is_some() {
+                    self.add_plutus_script(&plutus_witness.script().unwrap());
                     self.input_types.scripts.insert(hash.clone());
                 }
                 self.add_plutus_data(&plutus_witness.plutus_data().clone().unwrap());
@@ -938,7 +942,7 @@ impl TransactionBuilder {
         }
         let min_ada = min_ada_required(
             &output.amount(),
-            output.data_hash.is_some() || datum.is_some(),
+            output.datum.is_some() || datum.is_some(),
             &self.config.coins_per_utxo_word,
         )?;
         if output.amount().coin() < min_ada {
@@ -951,8 +955,8 @@ impl TransactionBuilder {
             let new_output = &mut output.clone();
             if let Some(d) = &datum {
                 self.add_plutus_data(&d);
-                if output.data_hash.is_none() {
-                    new_output.set_data_hash(&hash_plutus_data(&d));
+                if output.datum.is_none() {
+                    new_output.set_datum(&Datum::new_data_hash(&hash_plutus_data(&d)));
                 }
             }
             self.outputs.add(new_output);
@@ -971,7 +975,7 @@ impl TransactionBuilder {
         }
         let min_ada = min_ada_required(
             &output.amount(),
-            output.data_hash.is_some(),
+            output.datum.is_some(),
             &self.config.coins_per_utxo_word,
         )?;
         if output.amount().coin() < min_ada {
@@ -1230,8 +1234,10 @@ impl TransactionBuilder {
             }
             ScriptWitnessKind::PlutusWitness => {
                 let plutus_witness = script_witness.as_plutus_witness().unwrap();
-                if !self.input_types.scripts.contains(&policy_id) {
-                    self.add_plutus_script(&plutus_witness.script());
+                if !self.input_types.scripts.contains(&policy_id)
+                    && plutus_witness.script().is_some()
+                {
+                    self.add_plutus_script(&plutus_witness.script().unwrap());
                     self.input_types.scripts.insert(policy_id.clone());
                 }
                 Some(Redeemer::new(
@@ -1585,7 +1591,8 @@ impl TransactionBuilder {
 
         // note: can't add data_hash to change
         // because we don't know how many change outputs will need to be created
-        let data_hash = None;
+        let datum = None;
+        let script_ref = None;
 
         let input_total = self.get_total_input()?;
 
@@ -1636,7 +1643,8 @@ impl TransactionBuilder {
                         coins_per_utxo_word: &Coin,
                         change_address: &Address,
                         change_estimator: &Value,
-                        data_hash: Option<DataHash>,
+                        datum: Option<Datum>,
+                        script_ref: Option<ScriptRef>,
                     ) -> Result<Vec<MultiAsset>, JsError> {
                         // we insert the entire available ADA temporarily here since that could potentially impact the size
                         // as it could be 1, 2 3 or 4 bytes for Coin.
@@ -1647,7 +1655,8 @@ impl TransactionBuilder {
                         let mut output = TransactionOutput {
                             address: change_address.clone(),
                             amount: base_coin.clone(),
-                            data_hash: data_hash.clone(),
+                            datum: datum.clone(),
+                            script_ref: script_ref.clone(),
                         };
                         // If this becomes slow on large TXs we can optimize it like the following
                         // to avoid cloning + reserializing the entire output.
@@ -1705,7 +1714,8 @@ impl TransactionBuilder {
                                     output = TransactionOutput {
                                         address: change_address.clone(),
                                         amount: base_coin.clone(),
-                                        data_hash: data_hash.clone(),
+                                        datum: datum.clone(),
+                                        script_ref: script_ref.clone(),
                                     };
 
                                     // 3. continue building the new output from the asset we stopped
@@ -1742,7 +1752,7 @@ impl TransactionBuilder {
                     // we might need multiple change outputs for cases where the change has many asset types
                     // which surpass the max UTXO size limit
                     let minimum_utxo_val =
-                        min_pure_ada(&self.config.coins_per_utxo_word, data_hash.is_some())?;
+                        min_pure_ada(&self.config.coins_per_utxo_word, datum.is_some())?;
                     while let Some(Ordering::Greater) = change_left
                         .multiasset
                         .as_ref()
@@ -1753,7 +1763,8 @@ impl TransactionBuilder {
                             &self.config.coins_per_utxo_word,
                             address,
                             &change_left,
-                            data_hash.clone(),
+                            datum.clone(),
+                            script_ref.clone(),
                         )?;
                         if nft_changes.len() == 0 {
                             // this likely should never happen
@@ -1765,14 +1776,15 @@ impl TransactionBuilder {
                             change_value.set_multiasset(&nft_change);
                             let min_ada = min_ada_required(
                                 &change_value,
-                                data_hash.is_some(),
+                                datum.is_some(),
                                 &self.config.coins_per_utxo_word,
                             )?;
                             change_value.set_coin(&min_ada);
                             let change_output = TransactionOutput {
                                 address: address.clone(),
                                 amount: change_value.clone(),
-                                data_hash: data_hash.clone(),
+                                datum: datum.clone(),
+                                script_ref: script_ref.clone(),
                             };
                             // increase fee
                             let fee_for_change = self.fee_for_output(&change_output)?;
@@ -1791,7 +1803,8 @@ impl TransactionBuilder {
                         let pure_output = TransactionOutput {
                             address: address.clone(),
                             amount: change_left.clone(),
-                            data_hash: data_hash.clone(),
+                            datum: datum.clone(),
+                            script_ref: script_ref.clone(),
                         };
                         let additional_fee = self.fee_for_output(&pure_output)?;
                         let potential_pure_value =
@@ -1804,7 +1817,8 @@ impl TransactionBuilder {
                             self.add_change_output(&TransactionOutput {
                                 address: address.clone(),
                                 amount: potential_pure_value.clone(),
-                                data_hash: data_hash.clone(),
+                                datum: datum.clone(),
+                                script_ref: script_ref.clone(),
                             })?;
                         }
                     }
@@ -1823,7 +1837,7 @@ impl TransactionBuilder {
                 } else {
                     let min_ada = min_ada_required(
                         &change_estimator,
-                        data_hash.is_some(),
+                        datum.is_some(),
                         &self.config.coins_per_utxo_word,
                     )?;
                     // no-asset case so we have no problem burning the rest if there is no other option
@@ -1842,7 +1856,8 @@ impl TransactionBuilder {
                             let fee_for_change = self.fee_for_output(&TransactionOutput {
                                 address: address.clone(),
                                 amount: change_estimator.clone(),
-                                data_hash: data_hash.clone(),
+                                datum: datum.clone(),
+                                script_ref: script_ref.clone(),
                             })?;
 
                             let new_fee = fee.checked_add(&fee_for_change)?;
@@ -1858,7 +1873,8 @@ impl TransactionBuilder {
                                         address: address.clone(),
                                         amount: change_estimator
                                             .checked_sub(&Value::new(&new_fee.clone()))?,
-                                        data_hash: data_hash.clone(),
+                                        datum: datum.clone(),
+                                        script_ref: script_ref.clone(),
                                     })?;
 
                                     Ok(true)
@@ -2093,7 +2109,7 @@ impl TransactionBuilder {
                             .compare(
                                 &min_ada_required(
                                     &output.amount(),
-                                    output.data_hash.is_some(),
+                                    output.datum.is_some(),
                                     &this.config.coins_per_utxo_word,
                                 )
                                 .unwrap(),

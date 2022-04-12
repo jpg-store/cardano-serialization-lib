@@ -836,56 +836,165 @@ pub enum PlutusDatumSchema {
     DetailedSchema,
 }
 
-// #[wasm_bindgen]
-// #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-// pub struct Data(Vec<u8>);
+// Data takes the cbor encoded plutus data in bytes
+#[wasm_bindgen]
+#[derive(
+    Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize, JsonSchema,
+)]
+pub struct Data(PlutusData);
 
-// #[derive(
-//     Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize, JsonSchema,
-// )]
-// pub enum DatumEnum {
-//     Hash(DataHash),
-//     Data(PlutusData),
-// }
+#[wasm_bindgen]
+impl Data {
+    pub fn new(&self, plutus_data: &PlutusData) -> Self {
+        Self(plutus_data.clone())
+    }
 
-// #[wasm_bindgen]
-// #[derive(
-//     Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize, JsonSchema,
-// )]
-// pub struct Datum(DatumEnum);
+    pub fn get(&self) -> PlutusData {
+        self.0.clone()
+    }
+}
 
-// to_from_json!(Datum);
+#[derive(
+    Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize, JsonSchema,
+)]
+pub enum ScriptEnum {
+    NativeScript(NativeScript),
+    PlutusScriptV1(PlutusScript),
+    PlutusScriptV2(PlutusScript),
+}
 
-// #[wasm_bindgen]
-// impl Datum {
-//     pub fn new_data_hash(native_script: &NativeScript) -> Self {
-//         Self(ScriptWitnessEnum::NativeWitness(native_script.clone()))
-//     }
-//     pub fn new_plutus_data(plutus_witness: &PlutusWitness) -> Self {
-//         Self(ScriptWitnessEnum::PlutusWitness(plutus_witness.clone()))
-//     }
+#[wasm_bindgen]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum ScriptKind {
+    NativeScript,
+    PlutusScriptV1,
+    PlutusScriptV2,
+}
 
-//     pub fn kind(&self) -> ScriptWitnessKind {
-//         match &self.0 {
-//             ScriptWitnessEnum::NativeWitness(_) => ScriptWitnessKind::NativeWitness,
-//             ScriptWitnessEnum::PlutusWitness(_) => ScriptWitnessKind::PlutusWitness,
-//         }
-//     }
+#[wasm_bindgen]
+#[derive(
+    Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize, JsonSchema,
+)]
+pub struct Script(ScriptEnum);
 
-//     pub fn as_native_witness(&self) -> Option<NativeScript> {
-//         match &self.0 {
-//             ScriptWitnessEnum::NativeWitness(native_script) => Some(native_script.clone()),
-//             _ => None,
-//         }
-//     }
+#[wasm_bindgen]
+impl Script {
+    pub fn new_native(&self, native_script: &NativeScript) -> Self {
+        Self(ScriptEnum::NativeScript(native_script.clone()))
+    }
 
-//     pub fn as_plutus_witness(&self) -> Option<PlutusWitness> {
-//         match &self.0 {
-//             ScriptWitnessEnum::PlutusWitness(plutus_witness) => Some(plutus_witness.clone()),
-//             _ => None,
-//         }
-//     }
-// }
+    pub fn new_plutus_v1(&self, plutus_script: &PlutusScript) -> Self {
+        Self(ScriptEnum::PlutusScriptV1(plutus_script.clone()))
+    }
+
+    pub fn new_plutus_v2(&self, plutus_script: &PlutusScript) -> Self {
+        Self(ScriptEnum::PlutusScriptV2(plutus_script.clone()))
+    }
+
+    pub fn kind(&self) -> ScriptKind {
+        match &self.0 {
+            ScriptEnum::NativeScript(_) => ScriptKind::NativeScript,
+            ScriptEnum::PlutusScriptV1(_) => ScriptKind::PlutusScriptV1,
+            ScriptEnum::PlutusScriptV2(_) => ScriptKind::PlutusScriptV2,
+        }
+    }
+
+    pub fn as_native(&self) -> Option<NativeScript> {
+        match &self.0 {
+            ScriptEnum::NativeScript(native_script) => Some(native_script.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_plutus_v1(&self) -> Option<PlutusScript> {
+        match &self.0 {
+            ScriptEnum::PlutusScriptV1(plutus_script) => Some(plutus_script.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_plutus_v2(&self) -> Option<PlutusScript> {
+        match &self.0 {
+            ScriptEnum::PlutusScriptV2(plutus_script) => Some(plutus_script.clone()),
+            _ => None,
+        }
+    }
+}
+
+// ScriptRef takes the cbor encoded scripts in bytes
+#[wasm_bindgen]
+#[derive(
+    Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize, JsonSchema,
+)]
+pub struct ScriptRef(Script);
+
+#[wasm_bindgen]
+impl ScriptRef {
+    pub fn new(&self, script: &Script) -> Self {
+        Self(script.clone())
+    }
+
+    pub fn get(&self) -> Script {
+        self.0.clone()
+    }
+}
+
+#[derive(
+    Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize, JsonSchema,
+)]
+pub enum DatumEnum {
+    Empty,
+    Hash(DataHash),
+    Data(Data),
+}
+
+#[wasm_bindgen]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum DatumKind {
+    Empty,
+    Hash,
+    Data,
+}
+
+#[wasm_bindgen]
+#[derive(
+    Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize, JsonSchema,
+)]
+pub struct Datum(DatumEnum);
+
+to_from_json!(Datum);
+
+#[wasm_bindgen]
+impl Datum {
+    pub fn new_data_hash(data_hash: &DataHash) -> Self {
+        Self(DatumEnum::Hash(data_hash.clone()))
+    }
+    pub fn new_data(data: &Data) -> Self {
+        Self(DatumEnum::Data(data.clone()))
+    }
+
+    pub fn kind(&self) -> DatumKind {
+        match &self.0 {
+            DatumEnum::Hash(_) => DatumKind::Hash,
+            DatumEnum::Data(_) => DatumKind::Data,
+            DatumEnum::Empty => DatumKind::Empty,
+        }
+    }
+
+    pub fn as_data_hash(&self) -> Option<DataHash> {
+        match &self.0 {
+            DatumEnum::Hash(hash) => Some(hash.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_data(&self) -> Option<Data> {
+        match &self.0 {
+            DatumEnum::Data(data) => Some(data.clone()),
+            _ => None,
+        }
+    }
+}
 
 #[wasm_bindgen]
 pub fn encode_json_str_to_plutus_datum(
@@ -1138,6 +1247,175 @@ pub fn decode_plutus_datum_to_json_value(
 // Serialization
 
 use std::io::SeekFrom;
+
+impl cbor_event::se::Serialize for Datum {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array(cbor_event::Len::Len(if self.kind() == DatumKind::Empty {
+            1
+        } else {
+            2
+        }))?;
+        match &self.0 {
+            DatumEnum::Empty => serializer.write_unsigned_integer(0u64),
+            DatumEnum::Hash(data_hash) => {
+                serializer.write_unsigned_integer(1u64)?;
+                data_hash.serialize(serializer)
+            }
+            DatumEnum::Data(data) => {
+                serializer.write_unsigned_integer(2u64)?;
+                data.serialize(serializer)
+            }
+        }
+    }
+}
+
+impl Deserialize for Datum {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            if let cbor_event::Len::Len(n) = len {
+                if n != 1 || n != 2 {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::WrongLen(
+                        2,
+                        len,
+                        "[id, hash]",
+                    ))
+                    .into());
+                }
+            }
+            let datum_enum = match raw.unsigned_integer()? {
+                0 => DatumEnum::Empty,
+                1 => DatumEnum::Hash(DataHash::deserialize(raw)?),
+                2 => DatumEnum::Data(Data::deserialize(raw)?),
+                n => {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Uint(n),
+                        // TODO: change codegen to make FixedValueMismatch support Vec<Key> or ranges or something
+                        expected: Key::Uint(0),
+                    }
+                    .into());
+                }
+            };
+            if let cbor_event::Len::Indefinite = len {
+                if raw.special()? != CBORSpecial::Break {
+                    return Err(DeserializeFailure::EndingBreakMissing.into());
+                }
+            }
+            Ok(Datum(datum_enum))
+        })()
+        .map_err(|e| e.annotate("Datum"))
+    }
+}
+
+impl cbor_event::se::Serialize for Script {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_array(cbor_event::Len::Len(2))?;
+        match &self.0 {
+            ScriptEnum::NativeScript(native_script) => {
+                serializer.write_unsigned_integer(0u64)?;
+                native_script.serialize(serializer)
+            }
+            ScriptEnum::PlutusScriptV1(plutus_script) => {
+                serializer.write_unsigned_integer(1u64)?;
+                plutus_script.serialize(serializer)
+            }
+            ScriptEnum::PlutusScriptV2(plutus_script) => {
+                serializer.write_unsigned_integer(1u64)?;
+                plutus_script.serialize(serializer)
+            }
+        }
+    }
+}
+
+impl Deserialize for Script {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        (|| -> Result<_, DeserializeError> {
+            let len = raw.array()?;
+            if let cbor_event::Len::Len(n) = len {
+                if n != 2 {
+                    return Err(DeserializeFailure::CBOR(cbor_event::Error::WrongLen(
+                        2,
+                        len,
+                        "[id, hash]",
+                    ))
+                    .into());
+                }
+            }
+            let script_enum = match raw.unsigned_integer()? {
+                0 => ScriptEnum::NativeScript(NativeScript::deserialize(raw)?),
+                1 => ScriptEnum::PlutusScriptV1(PlutusScript::deserialize(raw)?),
+                2 => ScriptEnum::PlutusScriptV2(PlutusScript::deserialize(raw)?),
+                n => {
+                    return Err(DeserializeFailure::FixedValueMismatch {
+                        found: Key::Uint(n),
+                        // TODO: change codegen to make FixedValueMismatch support Vec<Key> or ranges or something
+                        expected: Key::Uint(0),
+                    }
+                    .into());
+                }
+            };
+            if let cbor_event::Len::Indefinite = len {
+                if raw.special()? != CBORSpecial::Break {
+                    return Err(DeserializeFailure::EndingBreakMissing.into());
+                }
+            }
+            Ok(Script(script_enum))
+        })()
+        .map_err(|e| e.annotate("Script"))
+    }
+}
+
+impl cbor_event::se::Serialize for Data {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag(24u64)?;
+        self.0.serialize(serializer)
+    }
+}
+
+impl Deserialize for Data {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        match raw.tag()? {
+            24 => Ok(Self(PlutusData::deserialize(raw)?)),
+            n => Err(DeserializeFailure::TagMismatch {
+                found: n,
+                expected: 24,
+            }
+            .into()),
+        }
+    }
+}
+
+impl cbor_event::se::Serialize for ScriptRef {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_tag(24u64)?;
+        self.0.serialize(serializer)
+    }
+}
+
+impl Deserialize for ScriptRef {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        match raw.tag()? {
+            24 => Ok(Self(Script::deserialize(raw)?)),
+            n => Err(DeserializeFailure::TagMismatch {
+                found: n,
+                expected: 24,
+            }
+            .into()),
+        }
+    }
+}
 
 impl cbor_event::se::Serialize for PlutusScript {
     fn serialize<'se, W: Write>(

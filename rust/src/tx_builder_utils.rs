@@ -145,12 +145,29 @@ pub enum ScriptWitnessEnum {
 pub struct PlutusWitness {
     plutus_data: Option<PlutusData>,
     redeemer: PlutusData,
-    script: PlutusScript,
+    script: Option<PlutusScript>,
 }
 
 #[wasm_bindgen]
 impl PlutusWitness {
-    pub fn new(plutus_data: &PlutusData, redeemer: &PlutusData, script: &PlutusScript) -> Self {
+    pub fn new_plutus_v1(
+        plutus_data: &PlutusData,
+        redeemer: &PlutusData,
+        script: PlutusScript,
+    ) -> Self {
+        Self {
+            plutus_data: Some(plutus_data.clone()),
+            redeemer: redeemer.clone(),
+            script: Some(script.clone()),
+        }
+    }
+
+    // Script is optional in Plutus v2, if script is supplied through reference input
+    pub fn new_plutus_v2(
+        plutus_data: &PlutusData,
+        redeemer: &PlutusData,
+        script: Option<PlutusScript>,
+    ) -> Self {
         Self {
             plutus_data: Some(plutus_data.clone()),
             redeemer: redeemer.clone(),
@@ -164,7 +181,7 @@ impl PlutusWitness {
     pub fn redeemer(&self) -> PlutusData {
         self.redeemer.clone()
     }
-    pub fn script(&self) -> PlutusScript {
+    pub fn script(&self) -> Option<PlutusScript> {
         self.script.clone()
     }
 }
