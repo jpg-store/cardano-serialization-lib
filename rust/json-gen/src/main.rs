@@ -1,20 +1,25 @@
 use std::fs;
 use std::path::Path;
 
-use cardano_multiplatform_lib::*;
 use cardano_multiplatform_lib::address::*;
 use cardano_multiplatform_lib::crypto::*;
 use cardano_multiplatform_lib::metadata::*;
 use cardano_multiplatform_lib::plutus::*;
+use cardano_multiplatform_lib::tx_builder_utils::*;
 use cardano_multiplatform_lib::utils::*;
+use cardano_multiplatform_lib::*;
 
 //#[macro_export]
 macro_rules! gen_json_schema {
     ($name:ident) => {
         //let out_dir = std::env::var_os("OUT_DIR").expect("no env");
         let dest_path = Path::new(&"schemas").join(&format!("{}.json", stringify!($name)));
-        fs::write(&dest_path, serde_json::to_string_pretty(&schemars::schema_for!($name)).unwrap()).unwrap();
-    }
+        fs::write(
+            &dest_path,
+            serde_json::to_string_pretty(&schemars::schema_for!($name)).unwrap(),
+        )
+        .unwrap();
+    };
 }
 
 fn main() {
@@ -136,7 +141,7 @@ fn main() {
     gen_json_schema!(PlutusData);
     gen_json_schema!(PlutusList);
     gen_json_schema!(PlutusData);
-    //gen_json_schema!(PlutusDataEnum);
+    gen_json_schema!(PlutusDataEnum);
     gen_json_schema!(Redeemer);
     gen_json_schema!(RedeemerTag);
     gen_json_schema!(RedeemerTagKind);
@@ -151,4 +156,7 @@ fn main() {
     gen_json_schema!(BigInt);
     gen_json_schema!(Int);
     gen_json_schema!(Value);
+
+    gen_json_schema!(Datum);
+    gen_json_schema!(ScriptWitness);
 }
