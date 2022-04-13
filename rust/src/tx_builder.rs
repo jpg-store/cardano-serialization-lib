@@ -1231,32 +1231,35 @@ impl TransactionBuilder {
         &mut self,
         policy_id: &PolicyID,
         mint_assets: &MintAssets,
-        script_witness: &ScriptWitness,
+        script_witness: Option<ScriptWitness>,
     ) {
-        let redeemer = match &script_witness.kind() {
-            ScriptWitnessKind::NativeWitness => {
-                let native_script = script_witness.as_native_witness().unwrap();
-                if !self.input_types.scripts.contains(&policy_id) {
-                    self.add_native_script(&native_script);
-                    self.input_types.scripts.insert(policy_id.clone());
+        let redeemer = match &script_witness {
+            Some(sw) => match sw.kind() {
+                ScriptWitnessKind::NativeWitness => {
+                    let native_script = sw.as_native_witness().unwrap();
+                    if !self.input_types.scripts.contains(&policy_id) {
+                        self.add_native_script(&native_script);
+                        self.input_types.scripts.insert(policy_id.clone());
+                    }
+                    None
                 }
-                None
-            }
-            ScriptWitnessKind::PlutusWitness => {
-                let plutus_witness = script_witness.as_plutus_witness().unwrap();
-                if !self.input_types.scripts.contains(&policy_id)
-                    && plutus_witness.script().is_some()
-                {
-                    self.add_plutus_script(&plutus_witness.script().unwrap());
-                    self.input_types.scripts.insert(policy_id.clone());
+                ScriptWitnessKind::PlutusWitness => {
+                    let plutus_witness = sw.as_plutus_witness().unwrap();
+                    if !self.input_types.scripts.contains(&policy_id)
+                        && plutus_witness.script().is_some()
+                    {
+                        self.add_plutus_script(&plutus_witness.script().unwrap());
+                        self.input_types.scripts.insert(policy_id.clone());
+                    }
+                    Some(Redeemer::new(
+                        &RedeemerTag::new_mint(),
+                        &to_bignum(0), // will point to correct input when finalizing txBuilder
+                        &plutus_witness.redeemer(),
+                        &ExUnits::new(&to_bignum(0), &to_bignum(0)), // correct ex units calculated at the end
+                    ))
                 }
-                Some(Redeemer::new(
-                    &RedeemerTag::new_mint(),
-                    &to_bignum(0), // will point to correct input when finalizing txBuilder
-                    &plutus_witness.redeemer(),
-                    &ExUnits::new(&to_bignum(0), &to_bignum(0)), // correct ex units calculated at the end
-                ))
-            }
+            },
+            None => None,
         };
 
         let mut mint_array = self.mint.clone().unwrap_or(Vec::new());
@@ -2964,7 +2967,7 @@ mod tests {
         tx_builder.add_mint(
             &policy_id,
             &MintAssets::new_from_entry(&name, Int::new(&amount)),
-            &ScriptWitness::new_native_witness(&min_script),
+            Some(ScriptWitness::new_native_witness(&min_script)),
         );
 
         let mut ass = Assets::new();
@@ -3076,7 +3079,7 @@ mod tests {
         tx_builder.add_mint(
             &policy_id,
             &MintAssets::new_from_entry(&name, Int::new(&amount_minted)),
-            &ScriptWitness::new_native_witness(&min_script),
+            Some(ScriptWitness::new_native_witness(&min_script)),
         );
 
         let mut ass = Assets::new();
@@ -5150,7 +5153,7 @@ mod tests {
         tx_builder.add_mint(
             &policy_id,
             &create_mint_asset(),
-            &ScriptWitness::new_native_witness(&mint_script),
+            Some(ScriptWitness::new_native_witness(&mint_script)),
         );
 
         assert!(tx_builder.mint.is_some());
@@ -5208,7 +5211,7 @@ mod tests {
         tx_builder.add_mint(
             &policy_id,
             &MintAssets::new_from_entry(&create_asset_name(), Int::new_i32(1234)),
-            &ScriptWitness::new_native_witness(&mint_script),
+            Some(ScriptWitness::new_native_witness(&mint_script)),
         );
 
         assert!(tx_builder.mint.is_some());
@@ -5447,22 +5450,22 @@ mod tests {
         tx_builder.add_mint(
             &hash_script(ScriptHashNamespace::NativeScript, mint_script1.to_bytes()),
             &MintAssets::new_from_entry(&name1, amount.clone()),
-            &ScriptWitness::new_native_witness(&mint_script1),
+            Some(ScriptWitness::new_native_witness(&mint_script1)),
         );
         tx_builder.add_mint(
             &hash_script(ScriptHashNamespace::NativeScript, mint_script2.to_bytes()),
             &MintAssets::new_from_entry(&name2, amount.clone()),
-            &ScriptWitness::new_native_witness(&mint_script2),
+            Some(ScriptWitness::new_native_witness(&mint_script2)),
         );
         tx_builder.add_mint(
             &hash_script(ScriptHashNamespace::NativeScript, mint_script3.to_bytes()),
             &MintAssets::new_from_entry(&name3, amount.clone()),
-            &ScriptWitness::new_native_witness(&mint_script3),
+            Some(ScriptWitness::new_native_witness(&mint_script3)),
         );
         tx_builder.add_mint(
             &hash_script(ScriptHashNamespace::NativeScript, mint_script3.to_bytes()),
             &MintAssets::new_from_entry(&name4, amount.clone()),
-            &ScriptWitness::new_native_witness(&mint_script3),
+            Some(ScriptWitness::new_native_witness(&mint_script3)),
         );
 
         let mint = tx_builder.mint().unwrap();
@@ -5639,12 +5642,12 @@ mod tests {
         tx_builder.add_mint(
             &hash_script(ScriptHashNamespace::NativeScript, mint_script1.to_bytes()),
             &MintAssets::new_from_entry(&name, Int::new_i32(40)),
-            &ScriptWitness::new_native_witness(&mint_script1),
+            Some(ScriptWitness::new_native_witness(&mint_script1)),
         );
         tx_builder.add_mint(
             &hash_script(ScriptHashNamespace::NativeScript, mint_script2.to_bytes()),
             &MintAssets::new_from_entry(&name, Int::new_i32(-40)),
-            &ScriptWitness::new_native_witness(&mint_script2),
+            Some(ScriptWitness::new_native_witness(&mint_script2)),
         );
 
         let total_input_after_mint = tx_builder.get_total_input().unwrap();

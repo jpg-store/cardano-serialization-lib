@@ -152,7 +152,7 @@ pub struct PlutusWitness {
 impl PlutusWitness {
     // Script is optional in Plutus v2, if script is supplied through reference input
     // Script can also be supplied separately at the end of the tx builder
-    pub fn new_plutus(
+    pub fn new(
         redeemer: &PlutusData,
         plutus_data: Option<PlutusData>,
         script: Option<PlutusScript>,
