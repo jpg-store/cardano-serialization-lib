@@ -941,39 +941,29 @@ impl TransactionBuilder {
     }
 
     /// Add explicit output via a TransactionOutput object
-    /// When datum is set, data_hash inside the output is set automatically. So it doesn't need to be set explicitly
-    pub fn add_output(
-        &mut self,
-        output: &TransactionOutput,
-        datum: Option<PlutusData>,
-    ) -> Result<(), JsError> {
-        let value_size = output.amount.to_bytes().len();
-        if value_size > self.config.max_value_size as usize {
-            return Err(JsError::from_str(&format!(
-                "Maximum value size of {} exceeded. Found: {}",
-                self.config.max_value_size, value_size
-            )));
-        }
+    pub fn add_output(&mut self, output: &TransactionOutput) -> Result<(), JsError> {
+        let mut_output = &mut output.clone();
         let min_ada = min_ada_required(
-            &output.amount(),
-            output.datum.is_some() || datum.is_some(),
+            &mut_output.amount(),
+            mut_output.datum.is_some(),
             &self.config.coins_per_utxo_word,
         )?;
-        if output.amount().coin() < min_ada {
+        if mut_output.amount().coin() < min_ada {
+            mut_output.amount.coin = min_ada;
+            // return Err(JsError::from_str(&format!(
+            //     "Value {} less than the minimum UTXO value {}",
+            //     from_bignum(&output.amount().coin()),
+            //     from_bignum(&min_ada)
+            // )));
+        }
+        let value_size = mut_output.amount.to_bytes().len();
+        if value_size > self.config.max_value_size as usize {
             Err(JsError::from_str(&format!(
-                "Value {} less than the minimum UTXO value {}",
-                from_bignum(&output.amount().coin()),
-                from_bignum(&min_ada)
+                "Maximum value size of {} exceeded. Found: {}",
+                self.config.max_value_size, value_size
             )))
         } else {
-            let new_output = &mut output.clone();
-            if let Some(d) = &datum {
-                self.add_plutus_data(&d);
-                if output.datum.is_none() {
-                    new_output.set_datum(&Datum::new_data_hash(&hash_plutus_data(&d)));
-                }
-            }
-            self.outputs.add(new_output);
+            self.outputs.add(mut_output);
             Ok(())
         }
     }
@@ -1081,7 +1071,7 @@ impl TransactionBuilder {
 
         let fee_before = min_fee(&mut self_copy)?;
 
-        self_copy.add_output(&output, None)?;
+        self_copy.add_output(&output)?;
         let fee_after = min_fee(&mut self_copy)?;
         fee_after.checked_sub(&fee_before)
     }
@@ -2404,7 +2394,6 @@ mod tests {
                     .with_coin(&to_bignum(29))
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
         tx_builder.set_ttl(&1000.into());
@@ -2530,7 +2519,6 @@ mod tests {
                     .with_coin(&to_bignum(880_000))
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
         tx_builder.set_ttl(&1000.into());
@@ -2699,7 +2687,6 @@ mod tests {
                     .with_coin(&to_bignum(100))
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
         tx_builder.set_ttl(&0.into());
@@ -2764,7 +2751,6 @@ mod tests {
                     .with_coin(&to_bignum(29))
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
         tx_builder.set_ttl(&0.into());
@@ -2831,7 +2817,6 @@ mod tests {
                     .with_coin(&to_bignum(5))
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
         tx_builder.set_ttl(&0.into());
@@ -3000,7 +2985,6 @@ mod tests {
                     .with_value(&output_amount)
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
 
@@ -3113,7 +3097,6 @@ mod tests {
                     .with_value(&output_amount)
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
 
@@ -3240,7 +3223,6 @@ mod tests {
                     .with_value(&output_amount)
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
 
@@ -3355,7 +3337,6 @@ mod tests {
                     .with_value(&output_amount)
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
 
@@ -3482,7 +3463,6 @@ mod tests {
                     .with_value(&output_amount)
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
 
@@ -3578,7 +3558,6 @@ mod tests {
                     .with_coin(&to_bignum(880_000))
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
         tx_builder.set_ttl(&1000.into());
@@ -3635,7 +3614,6 @@ mod tests {
                     .with_value(&Value::new(&to_bignum(2_000_000)))
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
 
@@ -3700,7 +3678,6 @@ mod tests {
                     .with_value(&Value::new(&to_bignum(2_000_000)))
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
 
@@ -3803,7 +3780,6 @@ mod tests {
                     .with_value(&output_amount)
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
 
@@ -3897,7 +3873,6 @@ mod tests {
                     .with_value(&output_amount)
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
 
@@ -3964,7 +3939,6 @@ mod tests {
                     .with_value(&output_amount)
                     .build()
                     .unwrap(),
-                None
             )
             .is_err());
     }
@@ -4029,7 +4003,6 @@ mod tests {
                     .with_value(&output_amount)
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
 
@@ -4078,7 +4051,6 @@ mod tests {
                     .with_coin(&to_bignum(1000))
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
         let mut available_inputs = TransactionUnspentOutputs::new();
@@ -4125,7 +4097,6 @@ mod tests {
                     .with_coin(&to_bignum(1200))
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
         let mut available_inputs = TransactionUnspentOutputs::new();
@@ -4171,16 +4142,11 @@ mod tests {
         output_ma.set_asset(&pid2, &asset_name3, to_bignum(4));
         output_value.set_multiasset(&output_ma);
         tx_builder
-            .add_output(
-                &TransactionOutput::new(
-                    &Address::from_bech32(
-                        "addr1vyy6nhfyks7wdu3dudslys37v252w2nwhv0fw2nfawemmnqs6l44z",
-                    )
+            .add_output(&TransactionOutput::new(
+                &Address::from_bech32("addr1vyy6nhfyks7wdu3dudslys37v252w2nwhv0fw2nfawemmnqs6l44z")
                     .unwrap(),
-                    &output_value,
-                ),
-                None,
-            )
+                &output_value,
+            ))
             .unwrap();
 
         let mut available_inputs = TransactionUnspentOutputs::new();
@@ -4295,16 +4261,11 @@ mod tests {
         output_ma.set_asset(&pid2, &asset_name3, to_bignum(4));
         output_value.set_multiasset(&output_ma);
         tx_builder
-            .add_output(
-                &TransactionOutput::new(
-                    &Address::from_bech32(
-                        "addr1vyy6nhfyks7wdu3dudslys37v252w2nwhv0fw2nfawemmnqs6l44z",
-                    )
+            .add_output(&TransactionOutput::new(
+                &Address::from_bech32("addr1vyy6nhfyks7wdu3dudslys37v252w2nwhv0fw2nfawemmnqs6l44z")
                     .unwrap(),
-                    &output_value,
-                ),
-                None,
-            )
+                &output_value,
+            ))
             .unwrap();
 
         let mut available_inputs = TransactionUnspentOutputs::new();
@@ -4402,7 +4363,6 @@ mod tests {
                     .with_coin(&to_bignum(COST))
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
         let mut available_inputs = TransactionUnspentOutputs::new();
@@ -4483,7 +4443,6 @@ mod tests {
                     .with_coin(&to_bignum(COST))
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
         let mut available_inputs = TransactionUnspentOutputs::new();
@@ -4524,7 +4483,6 @@ mod tests {
                     .with_coin(&to_bignum(COST))
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
         assert_eq!(tx_builder.min_fee().unwrap(), to_bignum(53));
@@ -4588,7 +4546,6 @@ mod tests {
                     .with_coin(&to_bignum(999_000))
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
         tx_builder.set_ttl(&1000.into());
@@ -4690,7 +4647,6 @@ mod tests {
                     .with_coin(&to_bignum(999_000))
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
         tx_builder.set_ttl(&1000.into());
@@ -4784,7 +4740,6 @@ mod tests {
                     .with_coin(&to_bignum(999_000))
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
         tx_builder.set_ttl(&1000.into());
@@ -4914,7 +4869,6 @@ mod tests {
                     .with_value(&output_amount)
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
 
@@ -5320,7 +5274,6 @@ mod tests {
                     .with_value(&value)
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
 
@@ -5355,7 +5308,6 @@ mod tests {
                     .with_coin(&coin)
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
 
@@ -5395,7 +5347,6 @@ mod tests {
                     .with_coin_and_asset(&coin, &multiasset)
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
 
@@ -5437,7 +5388,6 @@ mod tests {
                     .unwrap()
                     .build()
                     .unwrap(),
-                None,
             )
             .unwrap();
 
