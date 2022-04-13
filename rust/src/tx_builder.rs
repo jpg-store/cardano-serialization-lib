@@ -1416,6 +1416,10 @@ impl TransactionBuilder {
         self.network_id.clone()
     }
 
+    pub fn redeemers(&self) -> Option<Redeemers> {
+        self.collect_redeemers().clone()
+    }
+
     /// does not include refunds or withdrawals
     pub fn get_explicit_input(&self) -> Result<Value, JsError> {
         self.inputs
@@ -1994,7 +1998,7 @@ impl TransactionBuilder {
         }
     }
 
-    fn collect_redeemers(&mut self) -> Option<Redeemers> {
+    fn collect_redeemers(&self) -> Option<Redeemers> {
         let mut collected_redeemers = Redeemers::new();
 
         let lexical_order_inputs = self.get_lexical_order_inputs();
