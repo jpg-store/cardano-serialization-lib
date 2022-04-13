@@ -438,6 +438,10 @@ pub struct TransactionBuilder {
     plutus_scripts: Option<PlutusScripts>,
     plutus_data: Option<PlutusList>,
     redeemers: Option<Redeemers>,
+    //Babbage
+    collateral_return: Option<TransactionOutput>,
+    total_collateral: Option<Coin>,
+    reference_inputs: Option<TransactionInputs>,
 }
 
 #[wasm_bindgen]
@@ -905,6 +909,16 @@ impl TransactionBuilder {
         }
     }
 
+    pub fn add_reference_input(&mut self, reference_input: &TransactionInput) {
+        if self.reference_inputs.is_none() {
+            let inputs = TransactionInputs::new();
+            self.reference_inputs = Some(inputs);
+        }
+        let mut inputs = self.reference_inputs.clone().unwrap();
+        inputs.add(reference_input);
+        self.reference_inputs = Some(inputs);
+    }
+
     /// calculates how much the fee would increase if you added a given output
     pub fn fee_for_input(
         &self,
@@ -1114,6 +1128,12 @@ impl TransactionBuilder {
                     }
                     ScriptWitnessKind::PlutusWitness => {
                         let plutus_witness = sw.as_plutus_witness().unwrap();
+                        if !self.input_types.scripts.contains(&hash)
+                            && plutus_witness.script().is_some()
+                        {
+                            self.add_plutus_script(&plutus_witness.script().unwrap());
+                            self.input_types.scripts.insert(hash.clone());
+                        }
                         Some(Redeemer::new(
                             &RedeemerTag::new_reward(),
                             &to_bignum(0), // will point to correct input when finalizing txBuilder
@@ -1300,6 +1320,9 @@ impl TransactionBuilder {
             plutus_scripts: None,
             plutus_data: None,
             redeemers: None,
+            collateral_return: None,
+            total_collateral: None,
+            reference_inputs: None,
         }
     }
 
@@ -1933,7 +1956,7 @@ impl TransactionBuilder {
             // TODO: babbage support
             collateral_return: None,
             total_collateral: None,
-            reference_inputs: None,
+            reference_inputs: self.reference_inputs.clone(),
         };
         // we must build a tx with fake data (of correct size) to check the final Transaction size
         let full_tx = fake_full_tx(self, built)?;

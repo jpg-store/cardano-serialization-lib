@@ -143,34 +143,23 @@ pub enum ScriptWitnessEnum {
     Clone, Debug, Eq, PartialEq, Ord, PartialOrd, serde::Serialize, serde::Deserialize, JsonSchema,
 )]
 pub struct PlutusWitness {
-    plutus_data: Option<PlutusData>,
     redeemer: PlutusData,
+    plutus_data: Option<PlutusData>,
     script: Option<PlutusScript>,
 }
 
 #[wasm_bindgen]
 impl PlutusWitness {
-    pub fn new_plutus_v1(
-        plutus_data: &PlutusData,
-        redeemer: &PlutusData,
-        script: PlutusScript,
-    ) -> Self {
-        Self {
-            plutus_data: Some(plutus_data.clone()),
-            redeemer: redeemer.clone(),
-            script: Some(script.clone()),
-        }
-    }
-
     // Script is optional in Plutus v2, if script is supplied through reference input
-    pub fn new_plutus_v2(
-        plutus_data: &PlutusData,
+    // Script can also be supplied separately at the end of the tx builder
+    pub fn new(
         redeemer: &PlutusData,
+        plutus_data: Option<PlutusData>,
         script: Option<PlutusScript>,
     ) -> Self {
         Self {
-            plutus_data: Some(plutus_data.clone()),
             redeemer: redeemer.clone(),
+            plutus_data: plutus_data.clone(),
             script: script.clone(),
         }
     }
