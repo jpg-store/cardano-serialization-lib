@@ -467,12 +467,15 @@ impl TransactionBuilder {
             .clone()
             .into_iter()
             .filter(|utxo| {
-                !self
-                    .inputs
+                self.inputs
                     .iter()
-                    .any(|tx_builder_input| utxo.input == tx_builder_input.input)
+                    .all(|tx_builder_input| utxo.input != tx_builder_input.input)
             })
-            .collect();
+            .collect::<Vec<TransactionUnspentOutput>>();
+
+        if available_inputs.len() <= 0 {
+            return Ok(());
+        }
 
         let mut input_total = self.get_total_input()?;
         let mut output_total = self
