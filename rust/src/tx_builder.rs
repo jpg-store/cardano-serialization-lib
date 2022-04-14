@@ -2956,7 +2956,7 @@ mod tests {
             None,
         );
 
-        assert_eq!(tx_builder.inputs.len(), 4);
+        assert_eq!(tx_builder.inputs.len(), 1);
     }
 
     #[test]
