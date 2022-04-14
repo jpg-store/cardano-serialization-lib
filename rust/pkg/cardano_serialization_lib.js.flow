@@ -6,20 +6,6 @@
  */
 
 /**
- * @param {Transaction} tx
- * @param {LinearFee} linear_fee
- * @param {number} mem_price
- * @param {number} step_price
- * @returns {BigNum}
- */
-declare export function min_fee(
-  tx: Transaction,
-  linear_fee: LinearFee,
-  mem_price: number,
-  step_price: number
-): BigNum;
-
-/**
  * @param {TransactionHash} tx_body_hash
  * @param {ByronAddress} addr
  * @param {LegacyDaedalusPrivateKey} key
@@ -202,6 +188,20 @@ declare export function decrypt_with_password(
   password: string,
   data: string
 ): string;
+
+/**
+ * @param {Transaction} tx
+ * @param {LinearFee} linear_fee
+ * @param {number} mem_price
+ * @param {number} step_price
+ * @returns {BigNum}
+ */
+declare export function min_fee(
+  tx: Transaction,
+  linear_fee: LinearFee,
+  mem_price: number,
+  step_price: number
+): BigNum;
 
 /**
  */
@@ -5389,9 +5389,10 @@ declare export class TransactionBuilder {
    * Editing inputs, outputs, mint, etc. after change been calculated
    * might cause a mismatch in calculated fee versus the required fee
    * @param {Address} address
+   * @param {Value} minted
    * @returns {boolean}
    */
-  add_change_if_needed(address: Address): boolean;
+  add_change_if_needed(address: Address, minted: Value): boolean;
 
   /**
    * @returns {number}

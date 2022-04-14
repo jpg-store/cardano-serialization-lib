@@ -1309,7 +1309,11 @@ impl TransactionBuilder {
     /// Make sure to call this function last after setting all other tx-body properties
     /// Editing inputs, outputs, mint, etc. after change been calculated
     /// might cause a mismatch in calculated fee versus the required fee
-    pub fn add_change_if_needed(&mut self, address: &Address) -> Result<bool, JsError> {
+    pub fn add_change_if_needed(
+        &mut self,
+        address: &Address,
+        minted: &Value,
+    ) -> Result<bool, JsError> {
         // reset change outputs
         for index in self.changeOutputIndices.iter() {
             self.outputs.0.remove(*index);
@@ -1327,8 +1331,22 @@ impl TransactionBuilder {
             .get_explicit_output()?
             .checked_add(&Value::new(&self.get_deposit()?))?;
 
+        let mut outputs_going_to_the_user = Value::zero();
+
+        for output in self.outputs.0.iter() {
+            if output.address == *address {
+                outputs_going_to_the_user =
+                    outputs_going_to_the_user.checked_add(&output.amount)?;
+            }
+        }
+
         use std::cmp::Ordering;
-        match &input_total.partial_cmp(&output_total.checked_add(&Value::new(&fee))?) {
+        match &input_total.partial_cmp(
+            &output_total
+                .checked_add(&Value::new(&fee))?
+                .checked_sub(&outputs_going_to_the_user)?
+                .checked_sub(minted)?,
+        ) {
             Some(Ordering::Equal) => {
                 // recall: min_fee assumed the fee was the maximum possible so we definitely have enough input to cover whatever fee it ends up being
                 self.set_fee(&input_total.checked_sub(&output_total)?.coin());
