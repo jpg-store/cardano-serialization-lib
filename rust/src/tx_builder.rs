@@ -3,7 +3,10 @@ use super::output_builder::TransactionOutputAmountBuilder;
 use super::utils;
 use super::*;
 use crate::tx_builder_utils::*;
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashSet},
+    iter::FromIterator,
+};
 
 // comes from witsVKeyNeeded in the Ledger spec
 fn witness_keys_for_cert(
@@ -458,7 +461,19 @@ impl TransactionBuilder {
         inputs: &TransactionUnspentOutputs,
         strategy: CoinSelectionStrategyCIP2,
     ) -> Result<(), JsError> {
-        let available_inputs = &inputs.0.clone();
+        // making sure input is not already part of the tx builder inputs
+        let available_inputs = &inputs
+            .0
+            .clone()
+            .into_iter()
+            .filter(|utxo| {
+                !self
+                    .inputs
+                    .iter()
+                    .any(|tx_builder_input| utxo.input == tx_builder_input.input)
+            })
+            .collect();
+
         let mut input_total = self.get_total_input()?;
         let mut output_total = self
             .get_explicit_output()?
@@ -800,6 +815,14 @@ impl TransactionBuilder {
         amount: &Value,
         script_witness: &ScriptWitness,
     ) {
+        if self
+            .inputs
+            .iter()
+            .any(|tx_builder_input| *input == tx_builder_input.input)
+        {
+            return;
+        }
+
         match &script_witness.kind() {
             ScriptWitnessKind::NativeWitness => {
                 let native_script = script_witness.as_native_witness().unwrap();
@@ -841,6 +864,14 @@ impl TransactionBuilder {
         input: &TransactionInput,
         amount: &Value,
     ) {
+        if self
+            .inputs
+            .iter()
+            .any(|tx_builder_input| *input == tx_builder_input.input)
+        {
+            return;
+        }
+
         self.inputs.push(TxBuilderInput {
             input: input.clone(),
             amount: amount.clone(),
@@ -856,6 +887,14 @@ impl TransactionBuilder {
         amount: &Value,
         script_witness: Option<ScriptWitness>,
     ) {
+        if self
+            .inputs
+            .iter()
+            .any(|tx_builder_input| *input == tx_builder_input.input)
+        {
+            return;
+        }
+
         match &BaseAddress::from_address(address) {
             Some(addr) => {
                 match &addr.payment_cred().to_keyhash() {
