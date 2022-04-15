@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
+use js_sys::*;
+#[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
 use serde_json::{Map, Value as Val};
 #[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
 use wasm_bindgen::JsCast;
@@ -12,6 +14,23 @@ use wasm_bindgen_futures::JsFuture;
 #[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
 use web_sys::{Request, RequestInit, Response};
 
+// creates a custom window object to parse the fetch API from JavaScript into Rust;
+#[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen]
+    pub type globalThis;
+
+    # [wasm_bindgen (structural , method , getter , js_name = global)]
+    pub fn global(this: &globalThis) -> globalThis;
+
+    # [wasm_bindgen (structural , method , getter , js_name = self)]
+    pub fn self_(this: &globalThis) -> globalThis;
+
+    # [wasm_bindgen (method , structural, js_name = fetch)]
+    pub fn fetch_with_request(this: &globalThis, input: &web_sys::Request) -> ::js_sys::Promise;
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RedeemerResult {
     pub result: Option<EvaluationResult>,
@@ -19,7 +38,8 @@ pub struct RedeemerResult {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EvaluationResult {
-    pub EvaluationResult: HashMap<String, ExUnitResult>,
+    pub EvaluationResult: Option<HashMap<String, ExUnitResult>>,
+    pub EvaluationFailure: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -77,7 +97,7 @@ pub async fn get_ex_units(tx: Transaction, bf: &Blockfrost) -> Result<Redeemers,
     request.headers().set("Content-Type", "application/cbor")?;
     request.headers().set("project_id", &bf.project_id)?;
 
-    let window = web_sys::window().unwrap();
+    let window = js_sys::global().unchecked_into::<globalThis>();
     let resp_value = JsFuture::from(window.fetch_with_request(&request)).await?;
 
     // `resp_value` is a `Response` object.
@@ -92,8 +112,13 @@ pub async fn get_ex_units(tx: Transaction, bf: &Blockfrost) -> Result<Redeemers,
 
     match redeemer_result.result {
         Some(res) => {
+            if let Some(e) = &res.EvaluationFailure {
+                return Err(JsError::from_str(
+                    &serde_json::to_string_pretty(&e).unwrap(),
+                ));
+            }
             let mut redeemers = Redeemers::new();
-            for (pointer, eu) in &res.EvaluationResult {
+            for (pointer, eu) in &res.EvaluationResult.unwrap() {
                 let r: Vec<&str> = pointer.split(":").collect();
                 let tag = match r[0] {
                     "spend" => RedeemerTag::new_spend(),

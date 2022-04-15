@@ -3,10 +3,7 @@ use super::output_builder::TransactionOutputAmountBuilder;
 use super::utils;
 use super::*;
 use crate::tx_builder_utils::*;
-use std::{
-    collections::{BTreeMap, BTreeSet, HashSet},
-    iter::FromIterator,
-};
+use std::collections::{BTreeMap, BTreeSet};
 
 // comes from witsVKeyNeeded in the Ledger spec
 fn witness_keys_for_cert(
@@ -2505,7 +2502,7 @@ mod tests {
         let g: RedeemerResult = serde_json::from_str(data).unwrap();
         match g.result {
             Some(res) => {
-                for (pointer, eu) in &res.EvaluationResult {
+                for (pointer, eu) in &res.EvaluationResult.unwrap() {
                     assert_eq!(pointer, &"spend:0".to_string());
                     assert_eq!(eu.memory, 10000000);
                     assert_eq!(eu.steps, 20000000);
@@ -2513,6 +2510,46 @@ mod tests {
                     let r: Vec<&str> = pointer.split(":").collect();
                     assert_eq!(r[0], "spend");
                     assert_eq!(r[1], "0");
+                }
+            }
+            None => {
+                assert!(false);
+            }
+        }
+    }
+
+    #[test]
+    fn fetch_request_to_serde_with_failure() {
+        let data = r#"
+            {
+                "type": "result",
+                "version": "1.0",
+                "servicename": "ogmios",
+                "methodname": "evalEx",
+                "result": {
+                    "EvaluationFailure": {
+                        "spend:0": {"error": "Caluldation error"}
+                    }
+                }
+            }
+        "#;
+
+        let g: RedeemerResult = serde_json::from_str(data).unwrap();
+        match g.result {
+            Some(res) => {
+                if let Some(e) = &res.EvaluationFailure {
+                    print!("{}", &serde_json::to_string_pretty(&e).unwrap());
+                } else {
+                    assert!(false);
+                    for (pointer, eu) in &res.EvaluationResult.unwrap() {
+                        assert_eq!(pointer, &"spend:0".to_string());
+                        assert_eq!(eu.memory, 10000000);
+                        assert_eq!(eu.steps, 20000000);
+
+                        let r: Vec<&str> = pointer.split(":").collect();
+                        assert_eq!(r[0], "spend");
+                        assert_eq!(r[1], "0");
+                    }
                 }
             }
             None => {
