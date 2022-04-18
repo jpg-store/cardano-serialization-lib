@@ -282,6 +282,8 @@ pub struct TransactionBuilderConfig {
     costmdls: Costmdls,           // protocol parameter
     blockfrost: Blockfrost,
     prefer_pure_change: bool,
+    collateral_amount: BigNum,
+    prefer_split_change: bool,
 }
 
 #[wasm_bindgen]
@@ -297,6 +299,8 @@ pub struct TransactionBuilderConfigBuilder {
     costmdls: Option<Costmdls>,           // protocol parameter
     blockfrost: Option<Blockfrost>,
     prefer_pure_change: bool,
+    collateral_amount: BigNum,
+    prefer_split_change: bool,
 }
 
 #[wasm_bindgen]
@@ -313,6 +317,8 @@ impl TransactionBuilderConfigBuilder {
             costmdls: None,
             blockfrost: None,
             prefer_pure_change: false,
+            collateral_amount: 5000000,
+            prefer_split_change: false,
         }
     }
 
@@ -376,6 +382,12 @@ impl TransactionBuilderConfigBuilder {
         cfg
     }
 
+    pub fn prefer_split_change(&self, prefer_split_change: bool) -> Self {
+        let mut cfg = self.clone();
+        cfg.prefer_split_change = prefer_split_change;
+        cfg
+    }
+
     pub fn build(&self) -> Result<TransactionBuilderConfig, JsError> {
         let cfg = self.clone();
         Ok(TransactionBuilderConfig {
@@ -411,6 +423,8 @@ impl TransactionBuilderConfigBuilder {
                 Blockfrost::new("".to_string(), "".to_string())
             },
             prefer_pure_change: cfg.prefer_pure_change,
+            prefer_split_change: cfg.prefer_split_change,
+            collateral_amount: cfg.collateral_amount,
         })
     }
 }
@@ -1858,7 +1872,69 @@ impl TransactionBuilder {
                     change_left = change_left.checked_sub(&Value::new(&new_fee))?;
                     // add potentially a separate pure ADA change output
                     let left_above_minimum = change_left.coin.compare(&minimum_utxo_val) > 0;
-                    if self.config.prefer_pure_change && left_above_minimum {
+                    // calculate the fee for two outputs for split outputs which creates at least 2 outputs
+                    let fee_for_outputs = self.fee_for_output(&TransactionOutput {
+                        address: address.clone(),
+                        amount: Value::new(&self.config.collateral_amount.clone()),
+                        datum: datum.clone(),
+                        script_ref: script_ref.clone(),
+                    })?.checked_mul(&BigNum::from_str(&"2")?)?;
+                    let above_collateral_minimum = change_left.coin.compare(
+                        &self
+                            .config
+                            .collateral_amount
+                            .checked_add(&minimum_utxo_val)?
+                            .checked_add(&fee_for_outputs)?,
+                    ) > 0;
+                    if self.config.prefer_split_change && above_collateral_minimum {
+                        // Create collateral output and subtract from change left
+                        change_left =
+                            change_left.checked_sub(&Value::new(&self.config.collateral_amount))?;
+                        let collateral_transaction = TransactionOutput {
+                            address: address.clone(),
+                            amount: Value::new(&self.config.collateral_amount.clone()),
+                            datum: datum.clone(),
+                            script_ref: script_ref.clone(),
+                        };
+                        self.add_change_output(&collateral_transaction)?;
+                        // add on fee for collateral
+                        let fee_for_change = self.fee_for_output(&collateral_transaction)?;
+                        new_fee = new_fee.checked_add(&fee_for_change)?;
+                        
+                        //Split the rest of the change into decreasing outputs / 2, but if 2 ada or under stop splitting
+                        while change_left
+                            .coin
+                            .checked_div(&BigNum::from_str(&"2")?)?
+                            .compare(&minimum_utxo_val)
+                            >= 0 && change_left.coin.compare(&minimum_utxo_val.checked_mul(&BigNum::from_str(&"2")?)?) > 0
+                        {
+                            let half = change_left.coin.checked_div(&BigNum::from_str(&"2")?)?;
+                            change_left = change_left.checked_sub(&Value::new(&half))?;
+                            let half_output = TransactionOutput {
+                                address: address.clone(),
+                                amount: Value::new(&half.clone()),
+                                datum: datum.clone(),
+                                script_ref: script_ref.clone(),
+                            };
+                            self.add_change_output(&half_output)?;
+                            let fee_for_change = self.fee_for_output(&half_output)?;
+                            new_fee = new_fee.checked_add(&fee_for_change)?;
+                        }
+
+                        //deal with change left before exiting if statement
+                        if !change_left.is_zero() {
+                            change_left = change_left.checked_sub(&change_left)?;
+                            let leftover_output = TransactionOutput {
+                                address: address.clone(),
+                                amount: change_left,
+                                datum: datum.clone(),
+                                script_ref: script_ref.clone(),
+                            };
+                            self.add_change_output(&leftover_output)?;
+                            let fee_for_change = self.fee_for_output(&leftover_output)?;
+                            new_fee = new_fee.checked_add(&fee_for_change)?;
+                        }
+                    } else if self.config.prefer_pure_change && left_above_minimum {
                         let pure_output = TransactionOutput {
                             address: address.clone(),
                             amount: change_left.clone(),
@@ -2149,13 +2225,13 @@ impl TransactionBuilder {
                     get_ex_units(full_tx.clone(), &this.config.blockfrost).await?;
                 this.redeemers = Some(updated_redeemers);
 
-                //set new fee and and subract remaining amount from a change output
+                // set new fee and and subract remaining amount from a change output
                 let old_fee = full_tx.body.fee.clone();
                 let new_fee = min_fee(this)?;
                 this.set_fee(&new_fee);
                 let amount_to_subtract = new_fee.checked_sub(&old_fee)?;
-                // //get index of a change output which has sufficient balance
-                let index = this
+                // get index of a change output which has sufficient balance and is not collateral change output
+                let mut index_or_error = this
                     .change_outputs
                     .0
                     .iter()
@@ -2173,11 +2249,40 @@ impl TransactionBuilder {
                                 )
                                 .unwrap(),
                             )
-                            .is_positive()
+                            .is_positive() &&
+                        output
+                            .amount
+                            .coin
+                            .compare(&self.config.collateral_amount) != 0
                     })
-                    .ok_or_else(|| JsError::from_str("No change output found"))
-                    .unwrap();
+                    .ok_or_else(|| JsError::from_str("No change output found"));
 
+                // didn't find any other outputs with enough lovelaces so now check all change outputs one more time
+                if index_or_error.is_err() {
+                    index_or_error = this
+                        .change_outputs
+                        .0
+                        .iter()
+                        .position(|output| {
+                            output
+                                .amount
+                                .coin
+                                .checked_sub(&amount_to_subtract)
+                                .unwrap_or(to_bignum(0))
+                                .compare(
+                                    &min_ada_required(
+                                        &output.amount(),
+                                        output.datum.is_some(),
+                                        &this.config.coins_per_utxo_word,
+                                    )
+                                    .unwrap(),
+                                )
+                                .is_positive()
+                        })
+                        .ok_or_else(|| JsError::from_str("No change output found"));
+                }
+                let index = index_or_error.unwrap();
+                
                 this.change_outputs.0[index].amount = this.change_outputs.0[index]
                     .amount
                     .checked_sub(&Value::new(&amount_to_subtract))?;
