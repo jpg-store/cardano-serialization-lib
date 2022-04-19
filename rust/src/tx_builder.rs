@@ -283,6 +283,7 @@ pub struct TransactionBuilderConfig {
     blockfrost: Blockfrost,
     prefer_pure_change: bool,
     collateral_amount: BigNum,
+    min_split_amount_ada: BigNum,
     prefer_split_change: bool,
     native_asset_chunk_size: u32,
 }
@@ -301,6 +302,7 @@ pub struct TransactionBuilderConfigBuilder {
     blockfrost: Option<Blockfrost>,
     prefer_pure_change: bool,
     collateral_amount: BigNum,
+    min_split_amount_ada: BigNum,
     prefer_split_change: bool,
     native_asset_chunk_size: Option<u32>,
 }
@@ -320,6 +322,7 @@ impl TransactionBuilderConfigBuilder {
             blockfrost: None,
             prefer_pure_change: false,
             collateral_amount: to_bignum(5000000),
+            min_split_amount_ada: to_bignum(100),
             prefer_split_change: false,
             native_asset_chunk_size: None,
         }
@@ -385,9 +388,18 @@ impl TransactionBuilderConfigBuilder {
         cfg
     }
 
-    pub fn prefer_split_change(&self, prefer_split_change: bool) -> Self {
+    pub fn prefer_split_change(
+        &self,
+        prefer_split_change: bool,
+        collateral_amount: BigNum,
+        min_split_amount_ada: BigNum,
+        native_asset_chunk_size: u32,
+    ) -> Self {
         let mut cfg = self.clone();
         cfg.prefer_split_change = prefer_split_change;
+        cfg.collateral_amount = collateral_amount;
+        cfg.min_split_amount_ada = min_split_amount_ada;
+        cfg.native_asset_chunk_size = Some(native_asset_chunk_size);
         cfg
     }
 
@@ -428,7 +440,8 @@ impl TransactionBuilderConfigBuilder {
             prefer_pure_change: cfg.prefer_pure_change,
             prefer_split_change: cfg.prefer_split_change,
             collateral_amount: cfg.collateral_amount,
-            native_asset_chunk_size: cfg.native_asset_chunk_size, 
+            min_split_amount_ada: cfg.min_split_amount_ada,
+            native_asset_chunk_size: cfg.native_asset_chunk_size,
         })
     }
 }
@@ -1372,7 +1385,7 @@ impl TransactionBuilder {
             redeemers: None,
             collateral_return: None,
             total_collateral: None,
-            reference_inputs: None, 
+            reference_inputs: None,
         }
     }
 
@@ -1836,7 +1849,11 @@ impl TransactionBuilder {
                         .map_or_else(|| None, |ma| ma.partial_cmp(&MultiAsset::new()))
                     {
                         //Use pack_nfts_for_change with different params to easily split nft change.
-                        let max_value_size_change = if self.config.prefer_split_change {self.config.native_asset_chunk_size} else {self.config.max_value_size};
+                        let max_value_size_change = if self.config.prefer_split_change {
+                            self.config.native_asset_chunk_size
+                        } else {
+                            self.config.max_value_size
+                        };
 
                         let nft_changes = pack_nfts_for_change(
                             max_value_size_change,
@@ -1880,12 +1897,14 @@ impl TransactionBuilder {
                     // add potentially a separate pure ADA change output
                     let left_above_minimum = change_left.coin.compare(&minimum_utxo_val) > 0;
                     // calculate the fee for two outputs for split outputs which creates at least 2 outputs
-                    let fee_for_outputs = self.fee_for_output(&TransactionOutput {
-                        address: address.clone(),
-                        amount: Value::new(&self.config.collateral_amount.clone()),
-                        datum: datum.clone(),
-                        script_ref: script_ref.clone(),
-                    })?.checked_mul(&BigNum::from_str(&"2")?)?;
+                    let fee_for_outputs = self
+                        .fee_for_output(&TransactionOutput {
+                            address: address.clone(),
+                            amount: Value::new(&self.config.collateral_amount.clone()),
+                            datum: datum.clone(),
+                            script_ref: script_ref.clone(),
+                        })?
+                        .checked_mul(&BigNum::from_str(&"2")?)?;
                     let above_collateral_minimum = change_left.coin.compare(
                         &self
                             .config
@@ -1907,13 +1926,15 @@ impl TransactionBuilder {
                         // add on fee for collateral
                         let fee_for_change = self.fee_for_output(&collateral_transaction)?;
                         new_fee = new_fee.checked_add(&fee_for_change)?;
-                        
-                        //Split the rest of the change into decreasing outputs / 2, but if 2 ada or under stop splitting
+
+                        //Split the rest of the change into decreasing outputs / 2, but if 100 ada or under stop splitting based on default config
                         while change_left
                             .coin
                             .checked_div(&BigNum::from_str(&"2")?)?
-                            .compare(&minimum_utxo_val)
-                            >= 0 && change_left.coin.compare(&minimum_utxo_val.checked_mul(&BigNum::from_str(&"2")?)?) > 0
+                            .compare(
+                                &minimum_utxo_val.checked_mul(&self.config.min_split_amount_ada)?,
+                            )
+                            >= 0
                         {
                             let half = change_left.coin.checked_div(&BigNum::from_str(&"2")?)?;
                             change_left = change_left.checked_sub(&Value::new(&half))?;
@@ -2256,11 +2277,8 @@ impl TransactionBuilder {
                                 )
                                 .unwrap(),
                             )
-                            .is_positive() &&
-                        output
-                            .amount
-                            .coin
-                            .compare(&self.config.collateral_amount) != 0
+                            .is_positive()
+                            && output.amount.coin.compare(&self.config.collateral_amount) != 0
                     })
                     .ok_or_else(|| JsError::from_str("No change output found"));
 
@@ -2289,7 +2307,7 @@ impl TransactionBuilder {
                         .ok_or_else(|| JsError::from_str("No change output found"));
                 }
                 let index = index_or_error.unwrap();
-                
+
                 this.change_outputs.0[index].amount = this.change_outputs.0[index]
                     .amount
                     .checked_sub(&Value::new(&amount_to_subtract))?;
