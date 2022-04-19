@@ -284,6 +284,7 @@ pub struct TransactionBuilderConfig {
     prefer_pure_change: bool,
     collateral_amount: BigNum,
     prefer_split_change: bool,
+    native_asset_chunk_size: u32,
 }
 
 #[wasm_bindgen]
@@ -301,6 +302,7 @@ pub struct TransactionBuilderConfigBuilder {
     prefer_pure_change: bool,
     collateral_amount: BigNum,
     prefer_split_change: bool,
+    native_asset_chunk_size: Option<u32>,
 }
 
 #[wasm_bindgen]
@@ -317,8 +319,9 @@ impl TransactionBuilderConfigBuilder {
             costmdls: None,
             blockfrost: None,
             prefer_pure_change: false,
-            collateral_amount: 5000000,
+            collateral_amount: to_bignum(5000000),
             prefer_split_change: false,
+            native_asset_chunk_size: None,
         }
     }
 
@@ -425,6 +428,7 @@ impl TransactionBuilderConfigBuilder {
             prefer_pure_change: cfg.prefer_pure_change,
             prefer_split_change: cfg.prefer_split_change,
             collateral_amount: cfg.collateral_amount,
+            native_asset_chunk_size: cfg.native_asset_chunk_size, 
         })
     }
 }
@@ -1368,7 +1372,7 @@ impl TransactionBuilder {
             redeemers: None,
             collateral_return: None,
             total_collateral: None,
-            reference_inputs: None,
+            reference_inputs: None, 
         }
     }
 
@@ -1831,8 +1835,11 @@ impl TransactionBuilder {
                         .as_ref()
                         .map_or_else(|| None, |ma| ma.partial_cmp(&MultiAsset::new()))
                     {
+                        //Use pack_nfts_for_change with different params to easily split nft change.
+                        let max_value_size_change = if self.config.prefer_split_change {self.config.native_asset_chunk_size} else {self.config.max_value_size};
+
                         let nft_changes = pack_nfts_for_change(
-                            self.config.max_value_size,
+                            max_value_size_change,
                             &self.config.coins_per_utxo_word,
                             address,
                             &change_left,
